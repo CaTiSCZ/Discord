@@ -90,13 +90,9 @@ def parse_dice_info(text):
     return adv, dice_type_display, bonus
 
 def parse_single_roll(lines):
-    player_line, roll_line, total_line = lines
+    player_line, roll_line, total_value = lines
     player_name = player_line.split()[0][1:] if player_line.startswith("@") else "Unknown"
-    roll_line = normalize_roll_line(roll_line)
-    total_value = normalize_roll_line(total_line)
-    if total_value:
-        roll_line += f" = {total_value}"
-    return [f"{player_name} - {roll_line.strip()}"]
+    return [f"{player_name} - {roll_line.strip()} = {total_value.strip()}"]
 
 def parse_multi_roll(lines):
     player_line = lines[0]
@@ -124,7 +120,6 @@ def parse_multi_roll(lines):
     # zpracování jednotlivých hodů
     raw_rolls = []
     for line in lines[rolling_line_idx+1:-1]:
-        line = normalize_roll_line(line)
         if line.strip():
             raw_rolls.append(line)
 
@@ -163,15 +158,59 @@ def detect_roll_type_and_parse(lines):
     
 def normalize_roll_line(text: str) -> str:
     text = text.strip()
-    text = text.replace("**", "").replace("__", "").replace("`", "")
-    
-    for prefix in ("result:", "total:"):
+    text = text.replace("__", "").replace("`", "")
+    text = text.replace("kh1", "(adv)").replace("kl1", "(dis)")
+    for prefix in ("**result**:", "**total**:"):
         if text.lower().startswith(prefix):
             text = text.split(":", 1)[1].strip()
             break
-    text = text.replace("kh1", "(adv)").replace("kl1", "(dis)")
-    text = re.sub(r"~~(\d+)~~", r"-\1-", text)
+    # převod markdown na HTML
+    text = re.sub(r"~~(.*?)~~", r"<s>\1</s>", text)  # přeškrtnutí
+    text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)  # tučné
+    text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)  # kurzíva  
+    
     return text
+def save_html(all_lines: list[str], file_path: str):
+    # všechny řádky už jsou normalized a obsahují HTML tagy (<b>, <i>, <s>)
+    html_lines = "\n".join(all_lines)
+    html_content = f"""<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
+<meta charset="UTF-8">
+<meta http-equiv="refresh" content="1">
+<meta charset="UTF-8">
+<title>Rolls</title>
+<style>
+body {{
+    background-color: #000000;   /* černé pozadí */
+    color: #ffffff;              /* bílé písmo */
+    font-family: monospace;      /* monospace font pro zarovnání */
+    margin: 0px;
+    padding: 0px;
+    overflow: hidden;
+    white-space: pre;            /* zachování odsazení a sloupců */
+    font-size: 24px;
+    line-height: 1.2;
+}}
+b {{ font-weight: bold; }}
+i {{ font-style: italic; }}
+s {{ text-decoration: line-through; }}
+</style>
+</head>
+<body>
+<pre>
+{html_lines}
+</pre>
+</body>
+</html>
+"""
+    with open(file_path, "w", encoding="utf-8") as f:
+        f.write(html_content)
+
+
 
 @client.event
 async def on_ready():
@@ -195,11 +234,10 @@ async def fetch_messages(channel: discord.TextChannel, after_id: int | None = No
     return messages
 
 async def process_messages(messages: list[discord.Message]) -> list[str]:
-    """Zpracuje zprávy do textových řádků pro soubor."""
     all_lines: list[str] = []
     for msg in messages:
         content = msg.clean_content.strip()
-        lines = [l.strip() for l in content.splitlines() if l.strip()]
+        lines = [normalize_roll_line(l.strip()) for l in content.splitlines() if l.strip()]
         if msg.author.bot:
             parsed = detect_roll_type_and_parse(lines)
             all_lines.extend(parsed)
@@ -207,7 +245,9 @@ async def process_messages(messages: list[discord.Message]) -> list[str]:
             member = msg.guild.get_member(msg.author.id) or await msg.guild.fetch_member(msg.author.id)
             display_name = getattr(member, "display_name", msg.author.name)
             if content:
-                all_lines.append(f"{display_name}: {content}")
+                normalized = normalize_roll_line(content)
+                all_lines.append(f"{display_name}: {normalized}")
+
     return all_lines
 
 async def monitor_channel(channel: discord.TextChannel):
@@ -227,8 +267,7 @@ async def monitor_channel(channel: discord.TextChannel):
             all_lines = await process_messages(messages)
             if all_lines:
                 formatted = format_columns_all(all_lines)
-                with open(FILE_PATH, "w", encoding="utf-8") as f:
-                    f.write("\n".join(formatted))
+                save_html(formatted, FILE_PATH)
                 print("Nalezeny nové zprávy.")
             last_message_id = messages[-1].id
             save_last_id(last_message_id)
