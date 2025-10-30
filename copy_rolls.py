@@ -93,7 +93,7 @@ def parse_single_roll(lines):
     player_line, roll_line, total_line = lines
     player_name = player_line.split()[0][1:] if player_line.startswith("@") else "Unknown"
     roll_line = normalize_roll_line(roll_line)
-    total_value = total_line.replace("**Total**:", "").strip()
+    total_value = normalize_roll_line(total_line)
     if total_value:
         roll_line += f" = {total_value}"
     return [f"{player_name} - {roll_line.strip()}"]
@@ -139,6 +139,8 @@ def normalize_roll_line(text: str) -> str:
     text = text.strip()
     text = text.replace("**", "").replace("__", "")
     if text.lower().startswith("result:"):
+        text = text.split(":", 1)[1].strip()
+    if text.lower().startswith("total:"):
         text = text.split(":", 1)[1].strip()
     text = text.replace("kh1", "(adv)").replace("kl1", "(dis)")
     text = re.sub(r"~~(\d+)~~", r"-\1-", text)
