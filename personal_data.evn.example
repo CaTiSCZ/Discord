@@ -1,0 +1,10 @@
+DISCORD_TOKEN=your_discord_bot_token_here
+CHANNEL_ID=123456789012345678  # ID kanálu, kde bot čte hody
+ROLL_FILE=roll_dish.txt        # Výstupní soubor s hody
+LAST_ID_FILE=last_id.txt       # Soubor s posledním ID zprávy
+
+# === Notes ===
+# Tento soubor je pouze ukázka.
+# Zkopíruj ho do názvu `.env` a doplň vlastní hodnoty.
+# Např.:
+#   cp .env.example .env
