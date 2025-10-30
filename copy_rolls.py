@@ -7,32 +7,28 @@ from dotenv import load_dotenv
 
 load_dotenv("personal_data.env")
 
-TOKEN = os.getenv("TOKEN")
-CHANNEL_ID_STR = os.getenv("CHANNEL_ID")
 FILE_PATH = os.getenv("FILE_PATH", "rolls.txt")
 LAST_ID_FILE = os.getenv("LAST_ID_FILE", "log_file.txt" )
 INTERVAL = 15
 HISTORY_LIMIT = 10
 
-if not TOKEN:
-    raise ValueError("❌ Chybí TOKEN v personal_data.env")
-
-if not CHANNEL_ID_STR:
-    raise ValueError("❌ Chybí CHANNEL_ID v personal_data.env")
-
 try:
-    CHANNEL_ID = int(CHANNEL_ID_STR)
-except ValueError:
-    raise ValueError(f"❌ CHANNEL_ID musí být číslo, aktuálně: '{CHANNEL_ID_STR}'")
+    TOKEN = os.environ["TOKEN"]
+except KeyError:
+    raise ValueError("Chybí TOKEN v personal_data.env")
+try:
+    CHANNEL_ID = int(os.environ["CHANNEL_ID"])
+except KeyError:
+    raise ValueError("Chybí CHANNEL_ID v personal_data.env")
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 client = discord.Client(intents=intents)
 
-last_message_id = None
-empty_written = False
-no_new_messages_count = 0
+last_message_id: int | None = None
+empty_written: bool = False
+no_new_messages_count: int = 0
 
 def load_last_id():
     if os.path.exists(LAST_ID_FILE):
@@ -48,6 +44,8 @@ def save_last_id(msg_id: int):
         f.write(str(msg_id))
 
 def format_columns_all(content_lines, max_rows_per_col=9, max_col_width=40, col_spacing=2):
+    #Zalomí dlouhé řádky, rozdělí řádky do sloupců pro lepší čitelnost, 9 řádků na sloupec, 40 znaků šířka sloupce, 2 mezery mezi sloupci
+    #sloupce se vyrovnají podle nejdelšího řádku v daném sloupci
     wrapped_lines = []
     for line in content_lines:
         wrapped_lines.extend(textwrap.wrap(line, width=max_col_width, break_long_words=False) or [""])
@@ -78,15 +76,14 @@ def parse_dice_info(text):
     dice_type = dice_match.group(1) if dice_match else "None"
     bonus_match = re.search(r"([+-]\s*\d+)", text)
     bonus = bonus_match.group(1).replace(" ", "") if bonus_match else ""
-    if "kh1" in dice_type:
-        dice_type_display = dice_type.replace("kh1", "").strip()
-        adv = "adv "
-    elif "kl1" in dice_type:
-        dice_type_display = dice_type.replace("kl1", "").strip()
-        adv = "dis "
-    else:
-        dice_type_display = dice_type
-        adv = ""
+    adv_map = {"kh1": "adv", "kl1": "dis"}
+    adv = ""
+    dice_type_display = dice_type
+    for k, v in adv_map.items():
+        if k in dice_type:
+            adv = v
+            dice_type_display = dice_type.replace(k, "").strip()
+            break
     return adv, dice_type_display, bonus
 
 def parse_single_roll(lines):
@@ -138,85 +135,87 @@ def detect_roll_type_and_parse(lines):
 def normalize_roll_line(text: str) -> str:
     text = text.strip()
     text = text.replace("**", "").replace("__", "")
-    if text.lower().startswith("result:"):
-        text = text.split(":", 1)[1].strip()
-    if text.lower().startswith("total:"):
-        text = text.split(":", 1)[1].strip()
+    for prefix in ("result:", "total:"):
+        if text.lower().startswith(prefix):
+            text = text.split(":", 1)[1].strip()
+            break
     text = text.replace("kh1", "(adv)").replace("kl1", "(dis)")
     text = re.sub(r"~~(\d+)~~", r"-\1-", text)
-    
-
     return text
 
 @client.event
 async def on_ready():
     global last_message_id
-    print(f"✅ Přihlášen jako {client.user}")
+    print(f"Přihlášen jako {client.user}")
     last_message_id = load_last_id()
     if last_message_id:
-        print(f"📂 Načteno poslední ID zprávy: {last_message_id}")
+        print(f"Načteno poslední ID zprávy: {last_message_id}")
     else:
-        print("📂 Nebylo nalezeno předchozí ID zprávy (první běh).")
+        print("Nebylo nalezeno předchozí ID zprávy (první běh).")
     channel = client.get_channel(CHANNEL_ID)
     await monitor_channel(channel)
 
-async def monitor_channel(channel):
+async def fetch_messages(channel: discord.TextChannel) -> list[discord.Message]:
+    return [msg async for msg in channel.history(limit=HISTORY_LIMIT)]
+
+async def process_messages(messages: list[discord.Message], last_id: int | None) -> tuple[list[str], int]:
+    all_lines: list[str] = []
+    newest_message = messages[0]
+    if last_id is None:
+        return all_lines, newest_message.id  # první běh
+    for msg in messages:
+        if msg.id == last_id:
+            break
+        content = msg.clean_content.strip()
+        lines = [l.strip() for l in content.splitlines() if l.strip()]
+        if msg.author.bot:
+            parsed = detect_roll_type_and_parse(lines)
+            all_lines.extend(parsed)
+        else:
+            member = msg.guild.get_member(msg.author.id) or await msg.guild.fetch_member(msg.author.id)
+            display_name = getattr(member, "display_name", msg.author.name)
+            if content:
+                all_lines.append(f"{display_name}: {content}")
+    return all_lines, newest_message.id
+
+async def monitor_channel(channel: discord.TextChannel):
     global last_message_id, empty_written, no_new_messages_count
-    all_lines = []
+    all_lines: list[str] = []
     while True:
         try:
-            messages = [msg async for msg in channel.history(limit=HISTORY_LIMIT)]
+            messages = await fetch_messages(channel)
             if not messages:
                 await asyncio.sleep(INTERVAL)
                 continue
-            newest_message = messages[0]
+            lines, newest_id = await process_messages(messages, last_message_id)
             if last_message_id is None:
-                last_message_id = newest_message.id
+                last_message_id = newest_id
                 save_last_id(last_message_id)
                 await asyncio.sleep(INTERVAL)
                 continue
-            if newest_message.id != last_message_id:
+            if newest_id != last_message_id:
                 no_new_messages_count = 0
-                all_lines.clear()
-                for msg in messages:
-                    if msg.id == last_message_id:
-                        break
-                    content = msg.clean_content.strip()
-                    lines = [l.strip() for l in content.splitlines() if l.strip()]
-                    if msg.author.bot:
-                        parsed = detect_roll_type_and_parse(lines)
-                        all_lines.extend(parsed)
-                    else:
-                        member = msg.guild.get_member(msg.author.id)
-                        if not member:
-                            try:
-                                member = await msg.guild.fetch_member(msg.author.id)
-                            except:
-                                member = None
-                        display_name = member.display_name if member else msg.author.name
-                        if content:
-                            all_lines.append(f"{display_name}: {content}")
-                formatted_lines = format_columns_all(all_lines)
-                with open(FILE_PATH, "w", encoding="utf-8") as f:
-                    f.write("\n".join(formatted_lines))
-                print("💾 Nalezeny nové zprávy.")
-                last_message_id = newest_message.id
+                all_lines = lines
+                if all_lines:
+                    formatted = format_columns_all(all_lines)
+                    with open(FILE_PATH, "w", encoding="utf-8") as f:
+                        f.write("\n".join(formatted))
+                    print("Nalezeny nové zprávy.")
+                last_message_id = newest_id
                 save_last_id(last_message_id)
                 empty_written = False
             else:
                 no_new_messages_count += 1
                 if no_new_messages_count >= 2 and not empty_written:
                     open(FILE_PATH, "w", encoding="utf-8").close()
-                    print("⚪ Žádné nové zprávy – soubor vyprázdněn.")
+                    print("Žádné nové zprávy – soubor vyprázdněn.")
                     empty_written = True
         except Exception as e:
-            print("❌ Chyba monitor_channel:", e)
+            print("Chyba monitor_channel:", e)
         sleep_time = INTERVAL
-        num_lines = len(all_lines)
-        if num_lines > 14:
-            extra_blocks = (num_lines - 14 + 6) // 7
-            extra_blocks = min(extra_blocks, 5)
-            sleep_time += extra_blocks * 5
+        if len(all_lines) > 14:
+            sleep_time += min((max(len(all_lines) - 14, 0) + 6) // 7, 5) * 5
         await asyncio.sleep(sleep_time)
+
 
 client.run(TOKEN)
