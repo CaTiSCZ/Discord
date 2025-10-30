@@ -4,7 +4,9 @@ personal_data.evn
 last_id.txt
 roll_dish.txt
 
-*.evn
+*.env
+*.txt
+
 
 # === 🧱 Git a systémové soubory ===
 .git/

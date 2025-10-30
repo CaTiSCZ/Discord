@@ -5,14 +5,25 @@ import re
 import textwrap
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv("personal_data.env")
 
 TOKEN = os.getenv("TOKEN")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID"))
+CHANNEL_ID_STR = os.getenv("CHANNEL_ID")
 FILE_PATH = os.getenv("FILE_PATH", "rolls.txt")
 LAST_ID_FILE = os.getenv("LAST_ID_FILE", "log_file.txt" )
 INTERVAL = 15
 HISTORY_LIMIT = 10
+
+if not TOKEN:
+    raise ValueError("❌ Chybí TOKEN v personal_data.env")
+
+if not CHANNEL_ID_STR:
+    raise ValueError("❌ Chybí CHANNEL_ID v personal_data.env")
+
+try:
+    CHANNEL_ID = int(CHANNEL_ID_STR)
+except ValueError:
+    raise ValueError(f"❌ CHANNEL_ID musí být číslo, aktuálně: '{CHANNEL_ID_STR}'")
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -82,11 +93,10 @@ def parse_single_roll(lines):
     player_line, roll_line, total_line = lines
     player_name = player_line.split()[0][1:] if player_line.startswith("@") else "Unknown"
     roll_line = normalize_roll_line(roll_line)
-    total_match = re.search(r"Total:\s*(\d+)", total_line)
-    total_value = total_match.group(1) if total_match else ""
+    total_value = total_line.replace("**Total**:", "").strip()
     if total_value:
         roll_line += f" = {total_value}"
-    return [f"{player_name} - {roll_line}"]
+    return [f"{player_name} - {roll_line.strip()}"]
 
 def parse_multi_roll(lines):
     player_line = lines[0]
@@ -132,6 +142,7 @@ def normalize_roll_line(text: str) -> str:
         text = text.split(":", 1)[1].strip()
     text = text.replace("kh1", "(adv)").replace("kl1", "(dis)")
     text = re.sub(r"~~(\d+)~~", r"-\1-", text)
+    
 
     return text
 
@@ -197,11 +208,12 @@ async def monitor_channel(channel):
                     print("⚪ Žádné nové zprávy – soubor vyprázdněn.")
                     empty_written = True
         except Exception as e:
-            print("❌ Chyba:", e)
+            print("❌ Chyba monitor_channel:", e)
         sleep_time = INTERVAL
         num_lines = len(all_lines)
         if num_lines > 14:
             extra_blocks = (num_lines - 14 + 6) // 7
+            extra_blocks = min(extra_blocks, 5)
             sleep_time += extra_blocks * 5
         await asyncio.sleep(sleep_time)
 
