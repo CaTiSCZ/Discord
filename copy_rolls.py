@@ -46,12 +46,39 @@ def save_last_id(msg_id: int):
     with open(LAST_ID_FILE, "w") as f:
         f.write(str(msg_id))
 
+def visible_len(s: str) -> int:
+    """Přesně spočítá viditelnou délku textu bez HTML tagů."""
+    clean = re.sub(r'<[^>]*>', '', s)
+    return len(clean)
+
+def smart_wrap(text, width):
+    """Zalomení textu podle viditelné délky (ignoruje HTML tagy)."""
+    words = text.split()
+    lines = []
+    current = ""
+    current_len = 0
+
+    for w in words:
+        w_len = visible_len(w)
+        if current_len + (1 if current else 0) + w_len > width:
+            lines.append(current)
+            current = w
+            current_len = w_len
+        else:
+            if current:
+                current += " "
+                current_len += 1
+            current += w
+            current_len += w_len
+    if current:
+        lines.append(current)
+    return lines or [""]
+
 def format_columns_all(content_lines, max_rows=max_rows_per_column, max_width=max_column_width, spacing=column_spacing):
-    #Zalomí dlouhé řádky, rozdělí řádky do sloupců pro lepší čitelnost, 9 řádků na sloupec, 40 znaků šířka sloupce, 2 mezery mezi sloupci
-    #sloupce se vyrovnají podle nejdelšího řádku v daném sloupci
+    # zalamuje řádky podle viditelné délky (ignoruje HTML tagy)
     wrapped_lines = []
     for line in content_lines:
-        wrapped_lines.extend(textwrap.wrap(line, width=max_width, break_long_words=False) or [""])
+        wrapped_lines.extend(smart_wrap(line, max_width))
     n = len(wrapped_lines)
     if n <= max_rows:
         return wrapped_lines
@@ -61,7 +88,8 @@ def format_columns_all(content_lines, max_rows=max_rows_per_column, max_width=ma
         start = c * max_rows
         end = min(start + max_rows, n)
         cols.append(wrapped_lines[start:end])
-    col_widths = [min(max(len(line) for line in col), max_width) for col in cols]
+    # šířky sloupců podle viditelné délky
+    col_widths = [min(max(visible_len(line) for line in col), max_width) for col in cols]
     max_len = max(len(col) for col in cols)
     for col in cols:
         while len(col) < max_len:
@@ -70,7 +98,9 @@ def format_columns_all(content_lines, max_rows=max_rows_per_column, max_width=ma
     for i in range(max_len):
         row = ""
         for col, width in zip(cols, col_widths):
-            row += col[i].ljust(width + spacing)
+            line = col[i]
+            pad_len = width - visible_len(line)
+            row += line + (" " * (pad_len + spacing))
         output_lines.append(row.rstrip())
     return output_lines
 
@@ -136,12 +166,13 @@ def parse_multi_roll(lines):
         else:
             pre, post = line, ""
         split_rolls.append((pre, post))
-        max_len = max(max_len, len(pre))
+        max_len = max(max_len, visible_len(pre))
 
     # doplnit mezery a přidat číslování
     roll_lines = []
     for idx, (pre, post) in enumerate(split_rolls, 1):
-        pre_padded = pre.ljust(max_len)
+        pad_len = max_len - visible_len(pre)
+        pre_padded = pre + (" " * pad_len)
         roll_lines.append(f"{idx}. {pre_padded} {post}".rstrip())
 
     return [header] + roll_lines + [lines[-1]]
