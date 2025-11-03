@@ -5,6 +5,11 @@ import re
 import textwrap
 from dotenv import load_dotenv
 
+import sys
+print(sys.executable)
+print(sys.version)
+
+
 load_dotenv("personal_data.env")
 
 FILE_PATH = os.getenv("FILE_PATH", "rolls.txt")
@@ -215,30 +220,30 @@ def save_html(all_lines: list[str], file_path: str):
 <meta http-equiv="Expires" content="0">
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="1">
-<meta charset="UTF-8">
 <title>Rolls</title>
 <style>
 body {{
     background-color: #000000;   /* černé pozadí */
     color: #ffffff;              /* bílé písmo */
     font-family: monospace;      /* monospace font pro zarovnání */
-    margin: 0px;
     padding: 0px;
-    overflow: hidden;
+    margin: 0px;
+    overflow: visible;
     white-space: pre;            /* zachování odsazení a sloupců */
-    font-size: 24px;
+    font-size: 31px;
+}}
+pre {{
+    margin: 0;
+    padding: 0;
     line-height: 1.2;
+    min-width: 0;
 }}
 b {{ font-weight: bold; }}
 i {{ font-style: italic; }}
 s {{ text-decoration: line-through; }}
 </style>
 </head>
-<body>
-<pre>
-{html_lines}
-</pre>
-</body>
+<body><pre>{html_lines}</pre></body>
 </html>
 """
     with open(file_path, "w", encoding="utf-8") as f:
