@@ -49,6 +49,7 @@ def save_last_id(msg_id: int):
 def visible_len(s: str) -> int:
     """Přesně spočítá viditelnou délku textu bez HTML tagů."""
     clean = re.sub(r'<[^>]*>', '', s)
+    clean = clean.replace("&nbsp;", " ")
     return len(clean)
 
 def smart_wrap(text, width):
@@ -108,7 +109,7 @@ def parse_dice_info(text):
     dice_match = re.search(r"(\d+d\d+(?:kh1|kl1)?)", text)
     dice_type = dice_match.group(1) if dice_match else "None"
     bonus_match = re.search(r"([+-]\s*\d+)", text)
-    bonus = bonus_match.group(1).replace(" ", "") if bonus_match else ""
+    bonus = bonus_match.group(1) if bonus_match else ""
     adv_map = {"kh1": "adv", "kl1": "dis"}
     adv = ""
     dice_type_display = dice_type
@@ -172,9 +173,11 @@ def parse_multi_roll(lines):
     roll_lines = []
     for idx, (pre, post) in enumerate(split_rolls, 1):
         pad_len = max_len - visible_len(pre)
-        pre_padded = pre + (" " * pad_len)
-        roll_lines.append(f"{idx}. {pre_padded} {post}".rstrip())
-
+        if post:  # pokud máme operátor (+/=) pro 9. hod vyřešit jiný styl číslování.
+            roll_lines.append(f"{idx}. {pre}{'&nbsp;' * pad_len} {post}".rstrip())
+        else:  # řádek bez operátoru
+            roll_lines.append(f"{idx}. {pre}".rstrip())
+    
     return [header] + roll_lines + [lines[-1]]
 
 
