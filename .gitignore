@@ -6,7 +6,7 @@ roll_dish.txt
 
 *.env
 *.txt
-
+*.html
 
 # === 🧱 Git a systémové soubory ===
 .git/

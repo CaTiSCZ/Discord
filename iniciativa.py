@@ -2,16 +2,16 @@ import discord
 import asyncio
 import os
 import re
-import textwrap
+import textwrap, html
+import sys
+import threading, msvcrt  
 from dotenv import load_dotenv
-
-
 
 
 load_dotenv("personal_data.env")
 
-FILE_PATH = os.getenv("HODY_KOSTKOU_FILE", "rolls.txt")
-LAST_ID_FILE = os.getenv("LAST_ID_FILE", "log_file.txt" )
+FILE_PATH = os.getenv("INICIATIVA_FILE", "iniciativa_msg.txt")
+LAST_ID_FILE = os.getenv("INICIATIVA_LAST_ID", "iniciativa_log.txt" )
 INTERVAL = 10
 HISTORY_LIMIT = 10
 
@@ -20,7 +20,7 @@ try:
 except KeyError:
     raise ValueError("Chybí TOKEN v personal_data.env")
 try:
-    CHANNEL_ID = int(os.environ["HODY_KOSTKOU"])
+    CHANNEL_ID = int(os.environ["INICIATIVA"])
 except KeyError:
     raise ValueError("Chybí CHANNEL_ID v personal_data.env")
 
@@ -30,10 +30,10 @@ intents.members = True
 client = discord.Client(intents=intents)
 
 last_message_id: int | None = None
-empty_written: bool = False
-no_new_messages_count: int = 0
+messages_cache: dict[int, str] = {}
+delete_enabled = False
 max_rows_per_column: int = 9
-max_column_width: int = 38
+max_column_width: int = 15
 column_spacing: int = 2
 
 def load_last_id():
@@ -107,91 +107,6 @@ def format_columns_all(content_lines, max_rows=max_rows_per_column, max_width=ma
             row += line + (" " * (pad_len + spacing))
         output_lines.append(row.rstrip())
     return output_lines
-
-def parse_dice_info(text):
-    dice_match = re.search(r"(\d+d\d+(?:kh1|kl1)?)", text)
-    dice_type = dice_match.group(1) if dice_match else "None"
-    bonus_match = re.search(r"([+-]\s*\d+)", text)
-    bonus = bonus_match.group(1) if bonus_match else ""
-    adv_map = {"kh1": "adv", "kl1": "dis"}
-    adv = ""
-    dice_type_display = dice_type
-    for k, v in adv_map.items():
-        if k in dice_type:
-            adv = v
-            dice_type_display = dice_type.replace(k, "").strip()
-            break
-    return adv, dice_type_display, bonus
-
-def parse_single_roll(lines):
-    player_line, roll_line, total_value = lines
-    player_name = player_line.split()[0][1:] if player_line.startswith("@") else "Unknown"
-    return [f"{player_name} - {roll_line.strip()} = {total_value.strip()}"]
-
-def parse_multi_roll(lines):
-    player_line = lines[0]
-    player_name = player_line.split()[0][1:] if player_line.startswith("@") else "Unknown"
-
-    rolling_line_idx = next((i for i, l in enumerate(lines) if "Rolling" in l), 1)
-    rolling_line = lines[rolling_line_idx]
-    user_text = rolling_line.split(":", 1)[0].strip() if ":" in rolling_line else ""
-
-    iter_match = re.search(r"(\d+)\s*iterations", rolling_line, re.IGNORECASE)
-    num_iterations = int(iter_match.group(1)) if iter_match else 1
-
-    first_roll_line = lines[rolling_line_idx + 1]
-    adv, dice_type, bonus = parse_dice_info(first_roll_line)
-    plural = f"{num_iterations}x " if num_iterations > 1 else ""
-
-    header = f"{player_name} - {plural}{dice_type}"
-    if adv:
-        header += f"({adv.strip()})"
-    if bonus:
-        header += f" {bonus}"
-    if user_text:
-        header += f", {user_text}"
-
-    # zpracování jednotlivých hodů
-    raw_rolls = []
-    for line in lines[rolling_line_idx+1:-1]:
-        if line.strip():
-            raw_rolls.append(line)
-
-    # najít max délku části před + nebo =
-    max_len = 0
-    split_rolls = []
-    for line in raw_rolls:
-        if " + " in line:
-            pre, post = line.split(" + ", 1)
-            post = "+ " + post
-        elif " = " in line:
-            pre, post = line.split(" = ", 1)
-            post = "= " + post
-        else:
-            pre, post = line, ""
-        split_rolls.append((pre, post))
-        max_len = max(max_len, visible_len(pre))
-
-    # doplnit mezery a přidat číslování (dvouciferný formát)
-    roll_lines = []
-    for idx, (pre, post) in enumerate(split_rolls, 1):
-        pad_len = max_len - visible_len(pre)
-        if post:  # pokud máme operátor (+/=)
-            roll_lines.append(f"{idx:02d}. {pre}{'&nbsp;' * pad_len} {post}".rstrip())
-        else:  # řádek bez operátoru
-            roll_lines.append(f"{idx:02d}. {pre}".rstrip())
-    
-    return [header] + roll_lines + [lines[-1]]
-
-
-def detect_roll_type_and_parse(lines):
-    num_lines = len(lines)
-    if num_lines == 3:
-        return parse_single_roll(lines)
-    elif num_lines >= 5:
-        return parse_multi_roll(lines)
-    else:
-        return []
     
 def normalize_roll_line(text: str) -> str:
     text = text.strip()
@@ -248,21 +163,32 @@ s {{ text-decoration: line-through; }}
         f.write(html_content)
 
 
-
 @client.event
 async def on_ready():
     global last_message_id
-    print(f"Přihlášen jako {client.user}")
+    print(f"✅ Přihlášen jako {client.user}")
     last_message_id = load_last_id()
     if last_message_id:
-        print(f"Načteno poslední ID zprávy: {last_message_id}")
+        print(f"↩️ Načteno ID {last_message_id}")
     else:
-        print("Nebylo nalezeno předchozí ID zprávy (první běh).")
+        print("🆕 První běh (bez uloženého ID).")
     channel = client.get_channel(CHANNEL_ID)
-    await monitor_channel(channel)
+    await asyncio.gather(
+        monitor_channel(channel),
+        keyboard_listener()
+    )
+
+@client.event
+async def on_message_edit(before, after):
+    # aktualizace cache při úpravě zprávy
+    if after.author.bot:
+        return
+    messages_cache[after.id] = after.clean_content.strip()
+    print(f"✏️ Upravená zpráva: {after.id}")
+    await regenerate_display(after.channel)
 
 async def fetch_messages(channel: discord.TextChannel, after_id: int | None = None) -> list[discord.Message]:
-    """Načte všechny nové zprávy od last_message_id, seřazené od starší po novější."""
+    # načte zprávy po after_id (exkluzivně), nebo posledních HISTORY_LIMIT
     if after_id:
         messages = [msg async for msg in channel.history(limit=None, after=discord.Object(id=after_id))]
     else:
@@ -270,57 +196,102 @@ async def fetch_messages(channel: discord.TextChannel, after_id: int | None = No
     messages.sort(key=lambda m: m.created_at)  # starší nahoře
     return messages
 
-async def process_messages(messages: list[discord.Message]) -> list[str]:
-    all_lines: list[str] = []
-    for msg in messages:
-        content = msg.clean_content.strip()
-        lines = [normalize_roll_line(l.strip()) for l in content.splitlines() if l.strip()]
-        if msg.author.bot:
-            parsed = detect_roll_type_and_parse(lines)
-            all_lines.extend(parsed)
-        else:
-            member = msg.guild.get_member(msg.author.id) or await msg.guild.fetch_member(msg.author.id)
-            display_name = getattr(member, "display_name", msg.author.name)
-            if content:
-                normalized = normalize_roll_line(content)
-                all_lines.append(f"{display_name}: {normalized}")
-
-    return all_lines
+async def regenerate_display(channel):
+    """Znovu vygeneruje obsah HTML ze všech známých zpráv."""
+    all_lines = []
+    for msg_id, content in messages_cache.items():
+        content = normalize_roll_line(content)
+        # Zachováme kontrolu autora pro ověření, že zpráva stále existuje
+        await channel.fetch_message(msg_id)
+        all_lines.append(content)
+    formatted = format_columns_all(all_lines)
+    save_html(formatted, FILE_PATH)
+    print("💾 HTML aktualizováno")
 
 async def monitor_channel(channel: discord.TextChannel):
-    global last_message_id, empty_written, no_new_messages_count
+    global last_message_id, delete_enabled
+    last_snapshot = {}
+    last_state = None  # sleduje, co se naposledy stalo ("new" nebo "idle")
+
     while True:
         try:
             messages = await fetch_messages(channel, last_message_id)
-            if not messages:
-                no_new_messages_count += 1
-                if no_new_messages_count >= 2 and not empty_written:
-                    open(FILE_PATH, "w", encoding="utf-8").close()
-                    print("Žádné nové zprávy – soubor vyprázdněn.")
-                    empty_written = True
-                await asyncio.sleep(INTERVAL)
-                continue
+            new_detected = False
+            new_cache = {}  # Dočasná cache pro nové zprávy
+            
+            if messages:
+                latest_id = messages[-1].id
+                if latest_id > (last_message_id or 0):
+                    #print(f"📝 Aktualizace last_message_id: {latest_id}")
+                    last_message_id = latest_id
+                    save_last_id(last_message_id)
+                
+                # Zpracování nových zpráv
+                for msg in messages:
+                    if msg.author.bot:
+                        continue
+                    # Zpracuj každý řádek zprávy zvlášť
+                    lines = [line.strip() for line in msg.clean_content.splitlines()]
+                    content = "\n".join(line for line in lines if line)  # Zachová prázdné řádky
+                    if content:  # ignoruj zcela prázdné zprávy
+                        new_cache[msg.id] = content
+                        new_detected = True
+                
+                # Nahraď starou cache novou
+                if new_detected:
+                    messages_cache.clear()  # Vymaž starou cache
+                    messages_cache.update(new_cache)  # Přidej pouze nové zprávy
 
-            all_lines = await process_messages(messages)
-            if all_lines:
+            # Vyčištění cache od smazaných zpráv
+            cached_ids = list(messages_cache.keys())
+            for msg_id in cached_ids:
+                try:
+                    await channel.fetch_message(msg_id)
+                except discord.NotFound:
+                    del messages_cache[msg_id]
+                    new_detected = True  # vyvolá překreslení
+
+            # Aktualizace HTML při jakékoliv změně
+            if new_detected or messages_cache != last_snapshot:
+                # Rozděl obsah na řádky a zachovej formátování
+                all_lines = []
+                for content in messages_cache.values():
+                    for line in content.splitlines():
+                        if line.strip():  # Přidej jen neprázdné řádky
+                            all_lines.append(normalize_roll_line(line))
+                
                 formatted = format_columns_all(all_lines)
                 save_html(formatted, FILE_PATH)
-                print("Nalezeny nové zprávy.")
-            last_message_id = messages[-1].id
-            save_last_id(last_message_id)
-            empty_written = False
-            no_new_messages_count = 0
+                
+                delete_enabled = False
+                last_snapshot = messages_cache.copy()
+                if last_state != "new":
+                    print("🆕 Nové nebo změněné zprávy.")
+                    last_state = "new"
+            else:
+                delete_enabled = True
+                if last_state != "idle":
+                    print("💤 žádná změna (soubor lze smazat klávesou)")
+                    last_state = "idle"
 
         except Exception as e:
-            print("Chyba monitor_channel:", e)
+            print("❌ Chyba monitor_channel:", e)
 
-        # dynamické prodloužení spánku podle počtu řádků
-        sleep_time = INTERVAL
-        if len(all_lines) > max_rows_per_column:
-            extend_time = 5
-            max_column = 5
-            sleep_time += min((max(len(all_lines) - max_rows_per_column, 0) + max_rows_per_column-1) // max_rows_per_column, max_column) * extend_time
-        await asyncio.sleep(sleep_time)
+        await asyncio.sleep(INTERVAL)
 
+async def keyboard_listener():
+    # asynchronní posluchač kláves pro mazání souboru nebo ukončení
+    print("⌨️ Libovolná klávesa = smazat, 'q' = ukončit")
+
+    while True:
+        if msvcrt.kbhit():
+            ch = msvcrt.getwch()  # načte jeden znak (UNICODE)
+            if ch.lower() == 'q':
+                print("🔴 Konec skriptu")
+                sys.exit(0)
+            elif os.path.exists(FILE_PATH):
+                os.remove(FILE_PATH)
+                print("🗑️ Soubor smazán")
+        await asyncio.sleep(0.5)
 
 client.run(TOKEN)
