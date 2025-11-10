@@ -3,85 +3,61 @@ import discord
 import asyncio
 import os
 import re
-import html
-import sys
-import msvcrt
-
 
 class ChannelWatcher:
-    """
-    Sleduje jeden Discord kanál a zapisuje jeho obsah do HTML souboru.
-    Umožňuje konfigurovat chování: ignorovat boty, zobrazovat autory, detekovat hody kostkou atd.
-    """
-
     def __init__(
         self,
         client: discord.Client,
         channel_id: int,
         file_path: str,
         last_id_file: str,
-        *,
-        ignore_bots: bool = True,
-        show_author: bool = True,
-        auto_clear: bool = True,
-        manual_clear: bool = True,
-        format_mode: str = "simple",  # "simple" nebo "dice"
-        interval: float = 10.0,
+        interval: int = 10,
         history_limit: int = 10,
-        font_size: int = 31,
-        max_width_chars: int = 38,
-        min_width_px: int = 650,
-        px_per_char: int = 18,
+        show_author_mode: str = "both", # "both", "human", "bot", "none"
+        ignore_mode: str | None = None, # "bot", "human", nebo None
+        manual_clear: bool = False,
+        max_rows_per_column: int = 9,
+        max_column_width: int = 40,
+        column_spacing: int = 2,
     ):
         self.client = client
         self.channel_id = channel_id
         self.file_path = file_path
         self.last_id_file = last_id_file
-        self.ignore_bots = ignore_bots
-        self.show_author = show_author
-        self.auto_clear = auto_clear
-        self.manual_clear = manual_clear
-        self.format_mode = format_mode
         self.interval = interval
         self.history_limit = history_limit
-        self.font_size = font_size
-        self.max_width_chars = max_width_chars
-        self.min_width_px = min_width_px
-        self.px_per_char = px_per_char
+        self.show_author_mode = show_author_mode
+        self.ignore_mode = ignore_mode
+        self.manual_clear = manual_clear
+        self.max_rows_per_column = max_rows_per_column
+        self.max_column_width = max_column_width
+        self.column_spacing = column_spacing
 
-        self.last_message_id: int | None = None
-        self.messages_cache: dict[int, str] = {}
-        self.delete_enabled = False
-        self.idle_cycles = 0
-        self.last_state = None  # 'idle' nebo 'new'
+        self.last_message_id: int | None = None  # ID poslední zpracované zprávy
+        self.messages_cache: dict[int, str] = {}    # {msg_id: content}
+        self.delete_enabled = False     # zda je povoleno mazání zpráv
+        self.last_snapshot = {}     # {msg_id: content}
+        self.last_state = None  # 'new' nebo 'idle'
+        self.empty_written = False # zda byl již zapsán prázdný stav
+        self.no_new_messages_count = 0 # počet cyklů bez nové zprávy
+        self.message_max_age = 2  # kolik cyklů staré zprávy vydrží
+        self.display_limit = 10   # maximální počet zpráv zobrazených najednou
+        self.messages_cache: dict[int, dict] = {}  # {msg_id: {"content": str, "age": int}}
+        self.message_ages: dict[int, int] = {}  # key = message id, value = počet cyklů
+        self.manual_delete_ready: bool = False
+        self.min_age_for_delete: int = 1  # minimální počet cyklů, než se může mazat
 
-    # ========== INTERNÍ METODY ==========
 
-    def _load_last_id(self):
-        if os.path.exists(self.last_id_file):
-            try:
-                return int(open(self.last_id_file, "r").read().strip())
-            except ValueError:
-                return None
-        return None
+    # --- Pomocné funkce ---
 
-    def _save_last_id(self, msg_id: int):
-        with open(self.last_id_file, "w") as f:
-            f.write(str(msg_id))
+    @staticmethod
+    def visible_len(s: str) -> int:
+        clean = re.sub(r"<[^>]*>", "", s)
+        clean = clean.replace("&nbsp;", " ")
+        return len(clean)
 
-    async def _fetch_messages(self, channel: discord.TextChannel, after_id: int | None = None):
-        """Načte zprávy po ID (pokud je dáno), jinak posledních N."""
-        if after_id:
-            messages = [msg async for msg in channel.history(limit=None, after=discord.Object(id=after_id))]
-        else:
-            messages = [msg async for msg in channel.history(limit=self.history_limit)]
-        messages.sort(key=lambda m: m.created_at)
-        return messages
-
-    # ========== FORMÁTOVÁNÍ TEXTU ==========
-
-    def _normalize_roll_line(self, text: str) -> str:
-        """Převod markdownu na HTML a zkrášlení textu pro hody."""
+    @staticmethod
+    def normalize_line(text: str) -> str:
         text = text.strip()
         text = text.replace("__", "").replace("`", "")
         text = text.replace("kh1", "(adv)").replace("kl1", "(dis)")
@@ -89,160 +65,328 @@ class ChannelWatcher:
             if text.lower().startswith(prefix):
                 text = text.split(":", 1)[1].strip()
                 break
-
-        # převod markdownu
         text = re.sub(r"~~(.*?)~~", r"<s>\1</s>", text)
         text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
         text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
         return text
 
-    def _format_message(self, author, content):
-        """Zpracuje zprávu podle zvoleného formátu."""
-        if self.format_mode == "dice":
-            content = self._normalize_roll_line(content)
-        elif self.format_mode == "simple":
-            content = html.escape(content)
+    def smart_wrap(self, text, width):
+        words = text.split()
+        lines, current = [], ""
+        current_len = 0
+        for w in words:
+            w_len = self.visible_len(w)
+            if current_len + (1 if current else 0) + w_len > width:
+                lines.append(current)
+                current, current_len = w, w_len
+            else:
+                if current:
+                    current += " "
+                    current_len += 1
+                current += w
+                current_len += w_len
+        if current:
+            lines.append(current)
+        return lines or [""]
 
-        display_name = getattr(author, "display_name", author.name)
-        if self.show_author:
-            return f"{display_name}: {content}"
-        return content
+    def format_columns_all(self, content_lines):
+        wrapped_lines = []
+        for line in content_lines:
+            wrapped_lines.extend(self.smart_wrap(line, self.max_column_width))
+        n = len(wrapped_lines)
+        if n <= self.max_rows_per_column:
+            return wrapped_lines
+        num_cols = (n + self.max_rows_per_column - 1) // self.max_rows_per_column
+        cols = []
+        for c in range(num_cols):
+            start = c * self.max_rows_per_column
+            end = min(start + self.max_rows_per_column, n)
+            cols.append(wrapped_lines[start:end])
+        col_widths = [min(max(self.visible_len(line) for line in col), self.max_column_width) for col in cols]
+        max_len = max(len(col) for col in cols)
+        for col in cols:
+            while len(col) < max_len:
+                col.append("")
+        output_lines = []
+        for i in range(max_len):
+            row = ""
+            for col, width in zip(cols, col_widths):
+                line = col[i]
+                pad_len = width - self.visible_len(line)
+                row += line + (" " * (pad_len + self.column_spacing))
+            output_lines.append(row.rstrip())
+        return output_lines
 
-    def _wrap_html(self, lines: list[str]) -> str:
-        """Zabalí obsah do HTML s jednotným stylem."""
-        html_lines = "\n".join(lines)
-        return f"""<!DOCTYPE html>
+    # --- HTML ---
+
+    def save_html(self, all_lines: list[str]):
+        html_lines = "\n".join(all_lines)
+        html_content = f"""<!DOCTYPE html>
 <html lang="cs">
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="refresh" content="1">
+<title>Discord výpis</title>
 <style>
 body {{
     background-color: #000;
     color: #fff;
     font-family: monospace;
     white-space: pre;
-    margin: 0;
-    padding: 0;
-    overflow: visible;
-    font-size: {self.font_size}px;
+    font-size: 24px;
 }}
-b {{ font-weight: bold; }}
-i {{ font-style: italic; }}
-s {{ text-decoration: line-through; }}
 </style>
 </head>
 <body><pre>{html_lines}</pre></body>
-</html>"""
-
-    async def _regenerate_display(self, channel):
-        """Znovu vygeneruje HTML ze všech známých zpráv."""
-        all_lines = []
-        for msg_id, content in self.messages_cache.items():
-            msg = await channel.fetch_message(msg_id)
-            if not msg or (self.ignore_bots and msg.author.bot):
-                continue
-            line = self._format_message(msg.author, content)
-            all_lines.append(line)
-        html_out = self._wrap_html(all_lines)
+</html>
+"""
         with open(self.file_path, "w", encoding="utf-8") as f:
-            f.write(html_out)
-        print(f"💾 [{channel.name}] HTML aktualizováno ({len(all_lines)} řádků)")
+            f.write(html_content)
 
-    # ========== HLAVNÍ SLEDOVACÍ LOGIKA ==========
+    # --- ID zpráv ---
 
-    async def start(self):
-        """Spustí sledování daného kanálu."""
+    def load_last_id(self):
+        if os.path.exists(self.last_id_file):
+            try:
+                return int(open(self.last_id_file, "r").read().strip())
+            except ValueError:
+                return None
+        return None
+
+    def save_last_id(self, msg_id: int):
+        with open(self.last_id_file, "w") as f:
+            f.write(str(msg_id))
+
+    # --- Parsování hodů kostkou Avrae ---
+
+    @staticmethod
+    def parse_single_roll(lines):
+        player_line, roll_line, total_value = lines
+        player_name = player_line.split()[0][1:] if player_line.startswith("@") else "Unknown"
+        return [f"{player_name} - {roll_line.strip()} = {total_value.strip()}"]
+
+    @staticmethod
+    def parse_multi_roll(lines):
+        player_line = lines[0]
+        player_name = player_line.split()[0][1:] if player_line.startswith("@") else "Unknown"
+
+        rolling_line_idx = next((i for i, l in enumerate(lines) if "Rolling" in l), 1)
+        rolling_line = lines[rolling_line_idx]
+        user_text = rolling_line.split(":", 1)[0].strip() if ":" in rolling_line else ""
+
+        iter_match = re.search(r"(\d+)\s*iterations", rolling_line, re.IGNORECASE)
+        num_iterations = int(iter_match.group(1)) if iter_match else 1
+
+        first_roll_line = lines[rolling_line_idx + 1]
+        adv_map = {"kh1": "adv", "kl1": "dis"}
+        adv = ""
+        dice_type = first_roll_line
+        for k, v in adv_map.items():
+            if k in first_roll_line:
+                adv = v
+                dice_type = first_roll_line.replace(k, "").strip()
+                break
+
+        plural = f"{num_iterations}x " if num_iterations > 1 else ""
+        header = f"{player_name} - {plural}{dice_type}"
+        if adv:
+            header += f"({adv})"
+        bonus_match = re.search(r"([+-]\s*\d+)", first_roll_line)
+        if bonus_match:
+            header += f" {bonus_match.group(1)}"
+        if user_text:
+            header += f", {user_text}"
+
+        # ostatní řádky
+        raw_rolls = lines[rolling_line_idx + 1:-1]
+        max_len = 0
+        split_rolls = []
+        for line in raw_rolls:
+            if " + " in line:
+                pre, post = line.split(" + ", 1)
+                post = "+ " + post
+            elif " = " in line:
+                pre, post = line.split(" = ", 1)
+                post = "= " + post
+            else:
+                pre, post = line, ""
+            split_rolls.append((pre, post))
+            max_len = max(max_len, ChannelWatcher.visible_len(pre))
+
+        roll_lines = []
+        for idx, (pre, post) in enumerate(split_rolls, 1):
+            pad_len = max_len - ChannelWatcher.visible_len(pre)
+            if post:
+                roll_lines.append(f"{idx:02d}. {pre}{'&nbsp;'*pad_len} {post}".rstrip())
+            else:
+                roll_lines.append(f"{idx:02d}. {pre}".rstrip())
+
+        return [header] + roll_lines + [lines[-1]]
+
+    @staticmethod
+    def detect_roll_type_and_parse(lines):
+        num_lines = len(lines)
+        if num_lines == 3:
+            return ChannelWatcher.parse_single_roll(lines)
+        elif num_lines >= 5:
+            return ChannelWatcher.parse_multi_roll(lines)
+        return []
+    
+    async def listen_for_delete(self):
+        while True:
+            # pro Windows:
+            import msvcrt
+            if msvcrt.kbhit():
+                key = msvcrt.getch()
+                if key.lower() == b'd' and self.manual_delete_ready:
+                    # smaž všechny zprávy, které splňují min_age_for_delete
+                    to_delete = [mid for mid, m in self.messages_cache.items() if m["age"] >= self.min_age_for_delete]
+                    for mid in to_delete:
+                        del self.messages_cache[mid]
+                    self.manual_delete_ready = False
+            await asyncio.sleep(0.1)
+
+    # --- Hlavní monitor kanálu ---
+
+    async def monitor_channel(self):
         channel = self.client.get_channel(self.channel_id)
-        if not channel:
-            print(f"❌ Kanál {self.channel_id} nenalezen!")
-            return
+        self.last_message_id = self.load_last_id()
+        print(f"📡 Sleduji kanál {channel.name} ({self.channel_id})")
 
-        print(f"▶️ Sleduji kanál {channel.name} ({self.channel_id})")
-        self.last_message_id = self._load_last_id()
-
-        asyncio.create_task(self._monitor_channel(channel))
-        if self.manual_clear:
-            asyncio.create_task(self._keyboard_listener())
-
-    async def _monitor_channel(self, channel: discord.TextChannel):
-        """Pravidelně kontroluje nové zprávy."""
         while True:
             try:
-                messages = await self._fetch_messages(channel, self.last_message_id)
-                new_detected = False
+                messages = [msg async for msg in channel.history(limit=None, after=discord.Object(id=self.last_message_id))] \
+                        if self.last_message_id else \
+                        [msg async for msg in channel.history(limit=self.history_limit)]
+                messages.sort(key=lambda m: m.created_at)
 
-                if messages:
-                    for msg in messages:
-                        if self.ignore_bots and msg.author.bot:
+                cycle_lines = {}
+                new_message_detected = False
+
+                for msg in messages:
+                    content = msg.clean_content.strip()
+
+                    # --- filtrace zpráv ---
+                    if hasattr(self, "ignore_mode"):
+                        if self.ignore_mode == "bot" and msg.author.bot:
                             continue
-                        content = msg.clean_content.strip()
-                        if not content:
+                        if self.ignore_mode == "human" and not msg.author.bot:
                             continue
-                        self.messages_cache[msg.id] = content
-                        new_detected = True
+                    else:  # zpětná kompatibilita
+                        if self.ignore_bot and msg.author.bot:
+                            continue
 
-                    formatted = [
-                        self._format_message(await self._get_author(channel, mid), txt)
-                        for mid, txt in self.messages_cache.items()
-                    ]
-                    html_out = self._wrap_html(formatted)
-                    with open(self.file_path, "w", encoding="utf-8") as f:
-                        f.write(html_out)
-                    self.last_message_id = messages[-1].id
-                    self._save_last_id(self.last_message_id)
+                    # --- parsování Avrae hodů ---
+                    if msg.author.bot and msg.author.name == "Avrae":
+                        lines = [self.normalize_line(l) for l in content.splitlines() if l.strip()]
+                        parsed = self.detect_roll_type_and_parse(lines)
+                        for i, l in enumerate(parsed):
+                            if i == len(parsed)-1 and l.startswith("total"):
+                                cycle_lines[f"{msg.id}_{i}"] = l  # poslední řádek bez číslování
+                            else:
+                                cycle_lines[f"{msg.id}_{i}"] = l
+                    else:
+                        display_name = getattr(msg.author, "display_name", msg.author.name)
+                        prefix = ""
+                        if self.show_author_mode == "both":
+                            prefix = f"{display_name}: "
+                        elif self.show_author_mode == "human":
+                            prefix = f"{display_name}: " if not msg.author.bot else ""
+                        elif self.show_author_mode == "bot":
+                            prefix = f"{display_name}: " if msg.author.bot else ""
+                        # "none" → prefix zůstává ""
 
-                # --- změna nebo klid ---
-                if new_detected:
-                    self.delete_enabled = False
-                    self.idle_cycles = 0
-                    if self.last_state != "new":
-                        print(f"🆕 [{channel.name}] nové nebo změněné zprávy")
-                        self.last_state = "new"
+                        if content:
+                            cycle_lines[msg.id] = prefix + self.normalize_line(content)
+
+                    # --- detekce změn / aktualizace cache ---
+                    if msg.id not in self.messages_cache:
+                        # nová zpráva
+                        self.messages_cache[msg.id] = {"content": content, "age": 0}
+                        self.last_message_id = msg.id
+                        new_message_detected = True
+                    elif self.messages_cache[msg.id]["content"] != content:
+                        # editovaná zpráva
+                        self.messages_cache[msg.id]["content"] = content
+                        self.messages_cache[msg.id]["age"] = 0  # reset věku, protože se změnila
+                        self.last_message_id = msg.id
+                        new_message_detected = True
+                    else:
+                        # stará zpráva, zvýšíme věk jen pokud nebyla znovu načtena
+                        self.messages_cache[msg.id]["age"] += 1
+
+                    # --- odstranění starých zpráv podle age a display_limit ---
+                    # 1) zprávy přesáhly max_age
+                    to_delete = [mid for mid, m in self.messages_cache.items() if m["age"] > self.message_max_age]
+                    for mid in to_delete:
+                        del self.messages_cache[mid]
+
+                    # 2) zprávy, aby se vešly do display_limit
+                    all_ids = list(self.messages_cache.keys())
+                    if len(all_ids) > self.display_limit:
+                        sorted_ids = sorted(all_ids, key=lambda mid: self.messages_cache[mid]["age"], reverse=True)
+                        for mid in sorted_ids[self.display_limit:]:
+                            del self.messages_cache[mid]
+
+                    # --- zvýšení věku starých zpráv ---
+                    for msg_id, msg_data in self.messages_cache.items():
+                        if msg_id not in [m.id for m in messages]:  # nezvyšujeme věk znovu načtených
+                            msg_data["age"] += 1
+
+                    # --- kontrola, zda je možné manuální mazání ---
+                    if not new_message_detected:
+                        self.no_new_messages_count += 1
+                        self.manual_delete_ready = any(
+                            m["age"] >= self.min_age_for_delete for m in self.messages_cache.values()
+                        )
+                    else:
+                        self.no_new_messages_count = 0
+                        self.manual_delete_ready = False  # reset při nové zprávě
+
+                    # --- odstranění zpráv podle max_age a display_limit ---
+                    to_delete = [mid for mid, m in self.messages_cache.items() if m["age"] > self.message_max_age]
+                    for mid in to_delete:
+                        del self.messages_cache[mid]
+
+                    all_ids = list(self.messages_cache.keys())
+                    if len(all_ids) > self.display_limit:
+                        sorted_ids = sorted(all_ids, key=lambda mid: self.messages_cache[mid]["age"], reverse=True)
+                        for mid in sorted_ids[self.display_limit:]:
+                            del self.messages_cache[mid]
+
+                    # --- automatické mazání pokud nenastaveno manuální ---
+                    if not new_message_detected and not self.manual_clear:
+                        if self.no_new_messages_count >= 2:
+                            self.messages_cache.clear()
+
+
+
+                # --- ukládání do HTML ---
+                if cycle_lines:
+                    formatted = self.format_columns_all(list(cycle_lines.values()))
+                    self.save_html(formatted)
+                    self.empty_written = False
                 else:
-                    self.idle_cycles += 1
-                    if self.last_state != "idle":
-                        print(f"💤 [{channel.name}] žádná změna (soubor lze smazat klávesou)")
-                        self.last_state = "idle"
-                    if self.auto_clear and self.idle_cycles >= 2:
-                        open(self.file_path, "w").close()
-                        print(f"🗑️ [{channel.name}] soubor automaticky vymazán")
+                    self.no_new_messages_count += 1
+                    if self.no_new_messages_count >= 2 and not self.empty_written and not self.manual_clear:
+                        open(self.file_path, "w", encoding="utf-8").close()
+                        self.empty_written = True
 
             except Exception as e:
-                print(f"❌ [{channel.name}] chyba monitorování: {e}")
+                print(f"❌ [{self.channel_id}] Chyba monitor_channel:", e)
 
-            await asyncio.sleep(self.interval)
+            # --- dynamické prodloužení intervalu ---
+            sleep_time = self.interval
+            if len(cycle_lines) > self.max_rows_per_column:
+                extend_time = 5
+                max_column = 5
+                sleep_time += min((len(cycle_lines) - self.max_rows_per_column + self.max_rows_per_column-1)//self.max_rows_per_column, max_column) * extend_time
 
-    async def _get_author(self, channel, msg_id):
-        """Vrátí objekt autora podle ID zprávy."""
-        try:
-            msg = await channel.fetch_message(msg_id)
-            return msg.author
-        except Exception:
-            return None
+            await asyncio.sleep(sleep_time)
 
-    # ========== EDITACE ZPRÁV ==========
 
-    async def on_message_edit(self, before, after):
-        """Reakce na editaci zprávy."""
-        if self.ignore_bots and after.author.bot:
-            return
-        self.messages_cache[after.id] = after.clean_content.strip()
-        await self._regenerate_display(after.channel)
-        print(f"✏️ [{after.channel.name}] zpráva {after.id} upravena")
-
-    # ========== KLÁVESOVÉ MAZÁNÍ ==========
-
-    async def _keyboard_listener(self):
-        print(f"⌨️ [{self.channel_id}] libovolná klávesa = smazat, 'q' = konec")
-
-        while True:
-            if msvcrt.kbhit():
-                ch = msvcrt.getwch()
-                if ch.lower() == 'q':
-                    print("🔴 Ukončuji skript")
-                    sys.exit(0)
-                elif self.delete_enabled and os.path.exists(self.file_path):
-                    os.remove(self.file_path)
-                    print(f"🗑️ [{self.channel_id}] soubor ručně smazán")
-            await asyncio.sleep(0.5)
+    async def run(self):
+        await asyncio.gather(
+            self.monitor_channel(),
+            self.listen_for_delete()
+        )
