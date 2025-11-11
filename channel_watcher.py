@@ -297,7 +297,11 @@ body {{
                         # "none" → prefix zůstává ""
 
                         if content:
-                            cycle_lines[msg.id] = prefix + self.normalize_line(content)
+                            lines = [self.normalize_line(l) for l in content.splitlines() if l.strip()]
+                            if lines:
+                                lines[0] = prefix + lines[0]  # prefix jen u prvního řádku
+                                for i, line in enumerate(lines):
+                                    cycle_lines[f"{msg.id}_{i}"] = line
 
                     # --- detekce změn / aktualizace cache ---
                     if msg.id not in self.messages_cache:
@@ -314,6 +318,11 @@ body {{
                     else:
                         # stará zpráva, zvýšíme věk jen pokud nebyla znovu načtena
                         self.messages_cache[msg.id]["age"] += 1
+
+                    if new_message_detected:
+                        print(f"💬 [{os.path.basename(self.file_path)}] Nová nebo změněná zpráva: {content[:80]}")
+                        if self.last_message_id:
+                            self.save_last_id(self.last_message_id)
 
                     # --- odstranění starých zpráv podle age a display_limit ---
                     # 1) zprávy přesáhly max_age

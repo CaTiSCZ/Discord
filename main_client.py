@@ -1,3 +1,4 @@
+# main_client.py
 import discord
 import asyncio
 from channel_watcher import ChannelWatcher
@@ -26,7 +27,7 @@ async def start_watchers():
         )
     ]
     # spustí všechny watchery současně
-    await asyncio.gather(*(w.start() for w in watchers))
+    await asyncio.gather(*(w.run() for w in watchers))
 
 @client.event
 async def on_ready():
@@ -36,6 +37,7 @@ async def on_ready():
 
 # Získání hlavního event loop
 loop = asyncio.get_event_loop()
+asyncio.set_event_loop(loop)
 
 # Spuštění keyboard listeneru ve vlastním vlákně
 listener = KeyboardListener(loop)
