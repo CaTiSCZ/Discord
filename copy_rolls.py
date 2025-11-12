@@ -10,8 +10,8 @@ from dotenv import load_dotenv
 
 load_dotenv("personal_data.env")
 
-FILE_PATH = os.getenv("HODY_KOSTKOU_FILE", "rolls.txt")
-LAST_ID_FILE = os.getenv("LAST_ID_FILE", "log_file.txt" )
+FILE_PATH = os.getenv("HODY_KOSTKOU_FILE", "roll_dish.html")
+LAST_ID_FILE = os.getenv("LAST_ID_FILE", "hody_last_id.txt")
 INTERVAL = 10
 HISTORY_LIMIT = 10
 

@@ -3,6 +3,8 @@ import discord
 import asyncio
 import os
 import re
+import msvcrt
+from keyboard_listener import KeyboardListener as Listener
 
 class ChannelWatcher:
     def __init__(
@@ -19,6 +21,7 @@ class ChannelWatcher:
         max_rows_per_column: int = 9,
         max_column_width: int = 40,
         column_spacing: int = 2,
+        listener = None
     ):
         self.client = client
         self.channel_id = channel_id
@@ -32,9 +35,9 @@ class ChannelWatcher:
         self.max_rows_per_column = max_rows_per_column
         self.max_column_width = max_column_width
         self.column_spacing = column_spacing
+        self.listener = listener
 
         self.last_message_id: int | None = None  # ID poslední zpracované zprávy
-        self.messages_cache: dict[int, str] = {}    # {msg_id: content}
         self.delete_enabled = False     # zda je povoleno mazání zpráv
         self.last_snapshot = {}     # {msg_id: content}
         self.last_state = None  # 'new' nebo 'idle'
@@ -116,6 +119,7 @@ class ChannelWatcher:
                 row += line + (" " * (pad_len + self.column_spacing))
             output_lines.append(row.rstrip())
         return output_lines
+
 
     # --- HTML ---
 
@@ -233,17 +237,16 @@ body {{
         return []
     
     async def listen_for_delete(self):
+        if self.manual_delete_ready:
+            print("💡 Manuální mazání povoleno. Stiskněte 'd' + Enter pro smazání starých zpráv.")
         while True:
-            # pro Windows:
-            import msvcrt
-            if msvcrt.kbhit():
-                key = msvcrt.getch()
-                if key.lower() == b'd' and self.manual_delete_ready:
-                    # smaž všechny zprávy, které splňují min_age_for_delete
-                    to_delete = [mid for mid, m in self.messages_cache.items() if m["age"] >= self.min_age_for_delete]
-                    for mid in to_delete:
-                        del self.messages_cache[mid]
-                    self.manual_delete_ready = False
+            if self.listener.delete_key == "d" and self.manual_delete_ready:
+                ready_to_delete = [mid for mid, m in self.messages_cache.items() if m["age"] >= self.min_age_for_delete]
+                for mid in ready_to_delete:
+                    del self.messages_cache[mid]
+                print(f"[DEBUG] Smazáno {len(ready_to_delete)} zpráv.")
+                self.manual_delete_ready = False
+                self.listener.delete_key = None
             await asyncio.sleep(0.1)
 
     # --- Hlavní monitor kanálu ---
@@ -266,58 +269,46 @@ body {{
                 for msg in messages:
                     content = msg.clean_content.strip()
 
+                    display_name = getattr(msg.author, "display_name", msg.author.name)
+                    prefix = ""
+                    if self.show_author_mode == "both":
+                        prefix = f"{display_name}: "
+                    elif self.show_author_mode == "human":
+                        prefix = f"{display_name}: " if not msg.author.bot else ""
+                    elif self.show_author_mode == "bot":
+                        prefix = f"{display_name}: " if msg.author.bot else ""
+
+                    lines = [self.normalize_line(l) for l in content.splitlines() if l.strip()]
+                    if lines:
+                        lines[0] = prefix + lines[0]  # prefix jen u prvního řádku
+                    if msg.id not in self.messages_cache:
+                        self.messages_cache[msg.id] = {"content": lines, "age": 0}
+                        self.last_message_id = msg.id
+                        new_message_detected = True
+                    else:
+                        if self.messages_cache[msg.id]["content"] != lines:
+                            self.messages_cache[msg.id]["content"] = lines
+                            self.messages_cache[msg.id]["age"] = 0
+                            self.last_message_id = msg.id
+                            new_message_detected = True
+                        else:
+                            self.messages_cache[msg.id]["age"] += 1
+                            print(f"[DEBUG] Zpráva {msg.id} již zpracována, zvyšuje se věk na {self.messages_cache[msg.id]['age']}.")
+
                     # --- filtrace zpráv ---
                     if hasattr(self, "ignore_mode"):
                         if self.ignore_mode == "bot" and msg.author.bot:
                             continue
                         if self.ignore_mode == "human" and not msg.author.bot:
                             continue
-                    else:  # zpětná kompatibilita
-                        if self.ignore_bot and msg.author.bot:
-                            continue
 
                     # --- parsování Avrae hodů ---
                     if msg.author.bot and msg.author.name == "Avrae":
                         lines = [self.normalize_line(l) for l in content.splitlines() if l.strip()]
                         parsed = self.detect_roll_type_and_parse(lines)
-                        for i, l in enumerate(parsed):
-                            if i == len(parsed)-1 and l.startswith("total"):
-                                cycle_lines[f"{msg.id}_{i}"] = l  # poslední řádek bez číslování
-                            else:
-                                cycle_lines[f"{msg.id}_{i}"] = l
-                    else:
-                        display_name = getattr(msg.author, "display_name", msg.author.name)
-                        prefix = ""
-                        if self.show_author_mode == "both":
-                            prefix = f"{display_name}: "
-                        elif self.show_author_mode == "human":
-                            prefix = f"{display_name}: " if not msg.author.bot else ""
-                        elif self.show_author_mode == "bot":
-                            prefix = f"{display_name}: " if msg.author.bot else ""
-                        # "none" → prefix zůstává ""
-
-                        if content:
-                            lines = [self.normalize_line(l) for l in content.splitlines() if l.strip()]
-                            if lines:
-                                lines[0] = prefix + lines[0]  # prefix jen u prvního řádku
-                                for i, line in enumerate(lines):
-                                    cycle_lines[f"{msg.id}_{i}"] = line
-
-                    # --- detekce změn / aktualizace cache ---
-                    if msg.id not in self.messages_cache:
-                        # nová zpráva
-                        self.messages_cache[msg.id] = {"content": content, "age": 0}
-                        self.last_message_id = msg.id
+                        self.messages_cache[msg.id] = {"content": parsed, "age": 0}
                         new_message_detected = True
-                    elif self.messages_cache[msg.id]["content"] != content:
-                        # editovaná zpráva
-                        self.messages_cache[msg.id]["content"] = content
-                        self.messages_cache[msg.id]["age"] = 0  # reset věku, protože se změnila
-                        self.last_message_id = msg.id
-                        new_message_detected = True
-                    else:
-                        # stará zpráva, zvýšíme věk jen pokud nebyla znovu načtena
-                        self.messages_cache[msg.id]["age"] += 1
+
 
                     if new_message_detected:
                         print(f"💬 [{os.path.basename(self.file_path)}] Nová nebo změněná zpráva: {content[:80]}")
@@ -341,6 +332,7 @@ body {{
                     for msg_id, msg_data in self.messages_cache.items():
                         if msg_id not in [m.id for m in messages]:  # nezvyšujeme věk znovu načtených
                             msg_data["age"] += 1
+                            print(f"[DEBUG] Zpráva {msg_id} zvýšena na věk {msg_data['age']}.")
 
                     # --- kontrola, zda je možné manuální mazání ---
                     if not new_message_detected:
@@ -352,27 +344,18 @@ body {{
                         self.no_new_messages_count = 0
                         self.manual_delete_ready = False  # reset při nové zprávě
 
-                    # --- odstranění zpráv podle max_age a display_limit ---
-                    to_delete = [mid for mid, m in self.messages_cache.items() if m["age"] > self.message_max_age]
-                    for mid in to_delete:
-                        del self.messages_cache[mid]
-
-                    all_ids = list(self.messages_cache.keys())
-                    if len(all_ids) > self.display_limit:
-                        sorted_ids = sorted(all_ids, key=lambda mid: self.messages_cache[mid]["age"], reverse=True)
-                        for mid in sorted_ids[self.display_limit:]:
-                            del self.messages_cache[mid]
-
                     # --- automatické mazání pokud nenastaveno manuální ---
-                    if not new_message_detected and not self.manual_clear:
-                        if self.no_new_messages_count >= 2:
-                            self.messages_cache.clear()
-
-
+                    if not new_message_detected and not self.manual_clear and self.no_new_messages_count >= 2:
+                        self.messages_cache.clear()
+                        print(f"soubor {self.file_path} automaticky vyčištěn kvůli nečinnosti.")
 
                 # --- ukládání do HTML ---
-                if cycle_lines:
-                    formatted = self.format_columns_all(list(cycle_lines.values()))
+                if self.messages_cache:
+                    # flatten lines
+                    all_lines = []
+                    for msg_data in self.messages_cache.values():
+                        all_lines.extend(msg_data["content"])
+                    formatted = self.format_columns_all(all_lines)
                     self.save_html(formatted)
                     self.empty_written = False
                 else:
@@ -399,3 +382,11 @@ body {{
             self.monitor_channel(),
             self.listen_for_delete()
         )
+
+
+if __name__ == "__main__":
+    import subprocess
+    import sys
+    script_path = os.path.join(os.path.dirname(__file__), "main_client.py")
+    print(f"Spouštím hlavní script: {script_path}")
+    subprocess.run([sys.executable, script_path])
