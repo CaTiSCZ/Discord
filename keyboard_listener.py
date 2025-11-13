@@ -4,9 +4,10 @@ import asyncio
 import sys
 
 class KeyboardListener(threading.Thread):
-    def __init__(self, loop: asyncio.AbstractEventLoop):
+    def __init__(self, loop: asyncio.AbstractEventLoop, watchers=None):
         super().__init__()
         self.loop = loop
+        self.watchers = watchers or []
         self.daemon = True  # vláknu nemusí čekat na ukončení
         self._stop_event = threading.Event()
         self.delete_key = None
@@ -27,6 +28,8 @@ class KeyboardListener(threading.Thread):
                 if user_input.strip().lower() == "q":
                     print("⚡ KeyboardListener: Ukončuji script...")
                     # bezpečně zastaví asyncio loop
+                    for w in self.watchers:
+                        w.running = False
                     self.loop.call_soon_threadsafe(self.loop.stop)
                     break
                 elif user_input.strip().lower() == "d":

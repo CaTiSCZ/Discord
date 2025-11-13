@@ -28,6 +28,7 @@ async def start_watchers():
         )
     ]
     # spustí všechny watchery současně
+    listener.watchers = watchers
     await asyncio.gather(*(w.run() for w in watchers))
 
 @client.event
@@ -41,7 +42,7 @@ loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
 # Spuštění keyboard listeneru ve vlastním vlákně
-listener = KeyboardListener(loop)
+listener = KeyboardListener(loop, watchers=[])
 listener.start()
 
 try:
