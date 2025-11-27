@@ -19,16 +19,17 @@ async def start_watchers():
         ChannelWatcher(
             client, int(os.getenv("TESTOVACI_CH")),
             os.getenv("HODY_KOSTKOU_FILE", "rolls.html"), os.getenv("HODY_LAST_ID", "hody_log.txt" ),
-             ignore_mode = None, show_author_mode = "human", manual_clear=False, listener=listener
+             ignore_mode = None, show_author_mode = "human", manual_clear=False
         ),
         ChannelWatcher(
             client, int(os.getenv("TESTOVACI_CH")),
             os.getenv("INICIATIVA_FILE", "iniciativa_msg.html"), os.getenv("INICIATIVA_LAST_ID", "iniciativa_log.txt"),
-            ignore_mode = "bot", show_author_mode=False, manual_clear=True, listener=listener
+            ignore_mode = "bot", show_author_mode=False, manual_clear=True, 
         )
     ]
     # spustí všechny watchery současně
-    listener.watchers = watchers
+    for w in watchers:
+        listener.register_callback(w.on_keypress)
     await asyncio.gather(*(w.run() for w in watchers))
 
 @client.event
@@ -42,7 +43,7 @@ loop = asyncio.new_event_loop()
 asyncio.set_event_loop(loop)
 
 # Spuštění keyboard listeneru ve vlastním vlákně
-listener = KeyboardListener(loop, watchers=[])
+listener = KeyboardListener(loop)
 listener.start()
 
 try:
@@ -69,7 +70,7 @@ finally:
         loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
     except Exception as e:
         if not isinstance(e, asyncio.CancelledError):
-            print(f"Chyba při rušení tasků: {e}")
+            print(f"❌ Chyba při rušení tasků: {e}")
 
     loop.close()
     print("✅ Script ukončen.")

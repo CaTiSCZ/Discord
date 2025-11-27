@@ -1,40 +1,42 @@
 # keyboard_listener.py
 import threading
 import asyncio
-import sys
+import msvcrt
+import time
 
 class KeyboardListener(threading.Thread):
-    def __init__(self, loop: asyncio.AbstractEventLoop, watchers=None):
+    def __init__(self, loop: asyncio.AbstractEventLoop):
         super().__init__()
         self.loop = loop
-        self.watchers = watchers or []
-        self.daemon = True  # vláknu nemusí čekat na ukončení
+        self.daemon = True
         self._stop_event = threading.Event()
-        self.delete_key = None
+        self.callbacks = []
+
+    def register_callback(self, fn):
+        """Třídy zaregistrují callback volaný při stisku klávesy."""
+        if callable(fn):
+            self.callbacks.append(fn)
 
     def stop(self):
         self._stop_event.set()
-        try:
-            import ctypes
-            ctypes.pythonapi.PyThreadState_SetAsyncExc(ctypes.c_long(self.ident), ctypes.py_object(KeyboardInterrupt))
-        except Exception:
-            pass
 
     def run(self):
-        print("💡 KeyboardListener spuštěn. Pro ukončení napište 'q' + Enter.")
-        while True:
-            try:
-                user_input = input()
-                if user_input.strip().lower() == "q":
-                    print("⚡ KeyboardListener: Ukončuji script...")
-                    # bezpečně zastaví asyncio loop
-                    for w in self.watchers:
-                        w.running = False
+        print("💡 KeyboardListener spuštěn (q = quit, d = delete).")
+        while not self._stop_event.is_set():
+            if msvcrt.kbhit():
+                key = msvcrt.getwch().lower()
+
+                # zavolat callbacky
+                for fn in self.callbacks:
+                    try:
+                        fn(key)
+                    except Exception as e:
+                        print(f"❌ Chyba v callbacku: {e}")
+
+                # globální exit
+                if key == "q":
+                    print("⚡ KeyboardListener: Ukončuji program…")
                     self.loop.call_soon_threadsafe(self.loop.stop)
                     break
-                elif user_input.strip().lower() == "d":
-                    self.delete_key = "d"
-            except (EOFError, KeyboardInterrupt):
-                # ochrana proti neočekávanému přerušení
-                self.loop.call_soon_threadsafe(self.loop.stop)
-                break
+
+            time.sleep(0.05)

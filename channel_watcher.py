@@ -108,7 +108,7 @@ class MessageFormatter:
         except ValueError:
             return []
         player_name = author
-        return [f"{player_name} - {roll_line.strip()} = {total_value.strip()}"]
+        return [f"{player_name}: {roll_line.strip()} = {total_value.strip()}"]
 
     @staticmethod
     def parse_multi_roll(lines: List[str], author: str) -> List[str]:
@@ -139,7 +139,7 @@ class MessageFormatter:
                 break
 
         plural = f"{num_iterations}x " if num_iterations > 1 else ""
-        header = f"{player_name} - {plural}{dice_type}"
+        header = f"{player_name}: {plural}{dice_type}"
         if adv:
             header += f"({adv})"
         bonus_match = re.search(r"([+-]\s*\d+)", first_roll_line)
@@ -239,7 +239,7 @@ class ChannelWatcher:
         max_rows_per_column: int = 9,
         max_column_width: int = 40,
         column_spacing: int = 2,
-        listener: Optional[object] = None,
+       
     ):
         # parametry
         self.client = client
@@ -252,7 +252,7 @@ class ChannelWatcher:
         self.show_author_mode = show_author_mode
         self.ignore_mode = ignore_mode
         self.manual_clear = manual_clear
-        self.listener = listener
+        
 
         # formatter instance (řeší celý rendering & parsing)
         self.formatter = MessageFormatter(
@@ -275,7 +275,7 @@ class ChannelWatcher:
     def load_last_ids(self):
         """Načte old_last_id a last_id z last_id_file (čitelné)."""
         if not os.path.exists(self.last_id_file):
-            print(f"[INIT] last_id_file ({self.last_id_file}) neexistuje. Startuji s None.")
+            print(f"💡 last_id_file ({self.last_id_file}) neexistuje. Startuji s None.")
             self.old_last_id = None
             self.last_id = None
             return
@@ -291,7 +291,7 @@ class ChannelWatcher:
             self.last_id = kv.get("last_id")
             #print(f"[INIT] Načteny ID: old_last_id={self.old_last_id}, last_id={self.last_id}")
         except Exception as e:
-            print(f"[ERROR] Nelze načíst last_id_file: {e}")
+            print(f"❌ Nelze načíst last_id_file: {e}")
             self.old_last_id = None
             self.last_id = None
 
@@ -303,7 +303,7 @@ class ChannelWatcher:
                 f.write(f"last_id={self.last_id or 0}\n")
             #print(f"[SAVE] last_id_file uložen: old_last_id={self.old_last_id}, last_id={self.last_id}")
         except Exception as e:
-            print(f"[ERROR] Chyba při ukládání last_id_file: {e}")
+            print(f"❌ Chyba při ukládání last_id_file: {e}")
 
     # ----------------- fetch / normalizace surových zpráv -----------------
     async def fetch_recent(self, channel: discord.TextChannel) -> List[discord.Message]:
@@ -317,7 +317,7 @@ class ChannelWatcher:
             #print(f"[FETCH] Staženo {len(msgs)} posledních zpráv (limit={self.history_limit}).")
             return msgs
         except Exception as e:
-            print(f"[ERROR] Chyba při fetchování: {e}")
+            print(f"❌ Chyba při fetchování: {e}")
             return []
 
     async def normalize_msg_obj(self, msg: discord.Message) -> Dict:
@@ -389,9 +389,9 @@ class ChannelWatcher:
         # sort added by id (ascending)
         added.sort(key=lambda x: x["id"])
         if added:
-            print(f"[DETECT] Přidáno {len(added)} zpráv.")
+            print(f"💡 Přidáno {len(added)} zpráv.")
         if edited:
-            print(f"[DETECT] Upraveno {len(edited)} zpráv.")
+            print(f"🔄 Upraveno {len(edited)} zpráv.")
         return {"added": added, "edited": edited}
 
     # ----------------- aktualizace cache a správa věku -----------------
@@ -422,7 +422,7 @@ class ChannelWatcher:
             self.last_id = added[-1]["id"]
             self.save_last_ids()
 
-        print(f"[CACHE] Aktualizováno: cache_size={len(self.cache)}")
+        #print(f"[CACHE] Aktualizováno: cache_size={len(self.cache)}")
 
     # ----------------- příprava textů pro rendering (včetně Avrae parsing) -----------------
     def prepare_render_lines(self) -> List[str]:
@@ -509,7 +509,7 @@ class ChannelWatcher:
             self.formatter.save_html(lines, self.file_path)
             self.file_empty = False
             self.manual_delete_allowed = False  
-            print(f"[MANUAL] HTML aktualizováno ({len(lines)} řádků).")
+            print(f"💾 HTML aktualizováno ({len(lines)} řádků).")
             return lines
         try:
             recent_msgs = await self.fetch_recent(channel)
@@ -517,14 +517,16 @@ class ChannelWatcher:
             added = result["added"]
             edited = result["edited"]
 
-            if self.manual_clear:
-                self.manual_delete_allowed = True
 
             if added or edited:
                 # nové zprávy → aktualizuj cache a HTML
                 save_changes(added, edited, recent_msgs)
                 self.last_id = added[-1]["id"] if added else self.last_id
                 return
+            
+            if self.manual_clear and not self.manual_delete_allowed:
+                self.manual_delete_allowed = True
+                print("ℹ️ Nyní je povoleno manuální mazání přes 'd'.")
 
             if not self.manual_clear:
                 # žádné nové zprávy → vyčisti HTML jen jednou
@@ -533,90 +535,36 @@ class ChannelWatcher:
                     self.old_last_id = self.last_id
                     self.formatter.save_html([], self.file_path)
                     self.file_empty = True
-                    print("[AUTO] HTML vyčištěno (žádné nové zprávy).")
+                    print("🗑️ HTML vyčištěno (žádné nové zprávy).")
                 return
 
         except Exception as e:
-            print(f"[ERROR] run_cycle selhal: {e}")
+            print(f"🛑 run_cycle selhal: {e}")
 
 
     # ----------------- listener pro manuální mazání -----------------
     
-    async def listen_for_delete(self):
-        """Asynchronně čeká na vstup z konzole. Podporuje 'd' (delete) a 'q' (quit)."""
-        print("[LISTENER] Spuštěn listener pro manuální mazání.")
-        loop = asyncio.get_event_loop()
-        while self.running:
-            try:
-                # načteme řádek bez blokování event loopu
-                line = await loop.run_in_executor(None, sys.stdin.readline)
-                if line is None:
-                    await asyncio.sleep(0.1)
-                    continue
-                key = line.strip().lower()
+    def on_keypress(self, key: str):
+        if key == "d" and self.manual_delete_allowed:
+            print("🗑️  Čistím cache")
+            self.cache = []
+            self.file_empty = True
+            self.formatter.save_html([], self.file_path)
 
-                if key == "q":
-                    print("[LISTENER] Požadavek na ukončení (q) přijat.")
-                    self.running = False
-                    break
-
-                if key != "d":
-                    continue
-
-                # key == "d"
-                if not self.manual_clear:
-                    # v automatickém režimu manuální mazání nedovolíme
-                    print("[LISTENER] Režim automatického mazání – ignoruji klávesu D.")
-                    continue
-
-                if not getattr(self, "manual_delete_allowed", False):
-                    print("[LISTENER] Mazání zatím není povoleno (čekám na stabilní/stabilizovaný stav).")
-                    continue
-
-                # TADY: provést skutečné manuální mazání (inline, žádné await self.manual_delete())
-                if self.cache:
-                    removed = len(self.cache)
-                    self.cache = []
-                    self.old_last_id = self.last_id
-                    # uložíme prázdný HTML (pokud už není file_empty True)
-                    if not getattr(self, "file_empty", False):
-                        self.formatter.save_html([], self.file_path)
-                        self.file_empty = True
-                    # po manuálním smazání zakážeme další mazání dokud nepřijde nový stabilní stav
-                    self.manual_delete_allowed = False
-                    print(f"[MANUAL] Ručně smazáno {removed} zpráv. HTML vyprázdněno.")
-                else:
-                    print("[MANUAL] Žádné zprávy ke smazání (cache prázdná).")
-
-            except Exception as e:
-                # nezabijeme loop, ale vytiskneme chybu
-                print(f"[ERROR] listen_for_delete selhal: {e}")
-                await asyncio.sleep(0.1)
-
-
-    # ----------------- hlavní run (spustí monitor i listener) -----------------
-    async def monitor_channel(self):
+    # ----------------- hlavní smyčka -----------------
+    async def run(self):
         """Hlavní smyčka, která spouští cykly."""
         channel = self.client.get_channel(self.channel_id)
         if not channel:
-            print(f"[ERROR] Kanál s id {self.channel_id} není dostupný (get_channel returned None). Ujisti se, že bot je na serveru a má práva.")
+            print(f"🛑 Kanál s id {self.channel_id} není dostupný (get_channel returned None). Ujisti se, že bot je na serveru a má práva.")
             return
-        print(f"[START] Sleduji kanál {channel.name} ({self.channel_id})")
+        print(f"👀 Sleduji kanál {channel.name} ({self.channel_id})")
         self.load_last_ids()
         while self.running:
             await self.run_cycle(channel)
             await asyncio.sleep(self.interval)
+        
 
-    async def run(self):
-        """Spustí monitor a listener současně."""
-        await asyncio.gather(
-            self.monitor_channel(),
-            self.listen_for_delete()
-        )
-
-# pokud spouštíš moduálně pro test, můžeš vytvořit ChannelWatcher a zavolat run() v event loop.
-# main_client.py by měl vytvořit listener (KeyboardListener), startovat ho, vytvořit instance ChannelWatcher (s listenerem)
-# a spustit w.run() paralelně s klientem (viz tvůj main_client.py).
 # --- Samostatné spuštění souboru ---
 if __name__ == "__main__":
     """
@@ -632,4 +580,4 @@ if __name__ == "__main__":
     try:
         subprocess.run([sys.executable, script_path])
     except Exception as e:
-        print(f"❌ Nepodařilo se spustit main_client.py: {e}")
+        print(f"🛑 Nepodařilo se spustit main_client.py: {e}")
