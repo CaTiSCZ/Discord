@@ -5,6 +5,7 @@ import os
 import re
 from typing import List, Dict, Optional
 import sys
+import event
 # -----------------------------------------------------------------------------
 # MessageFormatter
 # - odpovídá za normalizaci textu, parsing Avrae hodů,
@@ -22,6 +23,9 @@ class MessageFormatter:
         self.max_column_width = max_column_width
         self.column_spacing = column_spacing
         self.show_author_mode = show_author_mode
+        self.computed_width = 650  # výchozí šířka
+        self.max_line_len = 0  # pro výpočet šířky
+        self.event_save_html = event.Event()
 
     # ----------------- pomocné -----------------
     @staticmethod
@@ -60,7 +64,12 @@ class MessageFormatter:
             wrapped_lines.extend(self.smart_wrap(line, self.max_column_width))
         n = len(wrapped_lines)
         if n <= self.max_rows_per_column:
-            return wrapped_lines
+            # Jen jeden sloupec
+            output_lines = wrapped_lines
+            self.max_line_len = max((self.visible_len(line) for line in output_lines), default=0)
+            self.compute_width(self.max_line_len) 
+            return output_lines
+        # Více sloupců
         num_cols = (n + self.max_rows_per_column - 1) // self.max_rows_per_column
         cols = []
         for c in range(num_cols):
@@ -80,6 +89,7 @@ class MessageFormatter:
                 pad_len = width - self.visible_len(line)
                 row += line + (" " * (pad_len + self.column_spacing))
             output_lines.append(row.rstrip())
+        
         return output_lines
 
     # ----------------- normalizace -----------------
@@ -173,7 +183,6 @@ class MessageFormatter:
 
         return [header] + roll_lines + [lines[-1]]
 
-
     def detect_roll_type_and_parse(self, lines: List[str], author: str) -> List[str]:
         """Rozhodne, jestli jde o single/multi roll a zavolá parser."""
         num_lines = len(lines)
@@ -186,6 +195,8 @@ class MessageFormatter:
     # ----------------- render do HTML -----------------
     def save_html(self, all_lines: List[str], file_path: str):
         """Uloží HTML file. all_lines jsou už normalized a připravené."""
+        self.max_line_len = max((self.visible_len(line) for line in all_lines), default=0)
+        self.event_save_html.emit(file_path, self.max_line_len)
         html_lines = "\n".join(all_lines)
         html_content = f"""<!DOCTYPE html>
 <html lang="cs">
@@ -476,6 +487,7 @@ class ChannelWatcher:
                     lines.append(f"{indent}{l}")
             elif len(content_lines) > 1:
                 lines.extend(content_lines[1:])
+                
         return self.formatter.format_columns_all(lines)
 
     # ----------------- pomoc pro načtení is_bot / is_from_avrae do cache -----------------
@@ -550,6 +562,7 @@ class ChannelWatcher:
             self.cache = []
             self.file_empty = True
             self.formatter.save_html([], self.file_path)
+            self.manual_delete_allowed = False
 
     # ----------------- hlavní smyčka -----------------
     async def run(self):
