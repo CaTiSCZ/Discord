@@ -18,6 +18,7 @@ class MessageFormatter:
         max_column_width: int = 40,
         column_spacing: int = 2,
         show_author_mode: str = "both",  # "both", "human", "bot", False/None
+        
     ):
         self.max_rows_per_column = max_rows_per_column
         self.max_column_width = max_column_width
@@ -26,6 +27,8 @@ class MessageFormatter:
         self.computed_width = 650  # výchozí šířka
         self.max_line_len = 0  # pro výpočet šířky
         self.event_save_html = event.Event()
+        
+
 
     # ----------------- pomocné -----------------
     @staticmethod
@@ -67,7 +70,7 @@ class MessageFormatter:
             # Jen jeden sloupec
             output_lines = wrapped_lines
             self.max_line_len = max((self.visible_len(line) for line in output_lines), default=0)
-            self.compute_width(self.max_line_len) 
+             
             return output_lines
         # Více sloupců
         num_cols = (n + self.max_rows_per_column - 1) // self.max_rows_per_column
@@ -93,7 +96,7 @@ class MessageFormatter:
         return output_lines
 
     # ----------------- normalizace -----------------
-    def normalize_line(self, text: str) -> str:
+    def normalize_line(self, text: str, txt_output:bool = False) -> str:
         """Odstraní markdowny a převede některé značky na HTML."""
         text = text.strip()
         text = text.replace("__", "").replace("`", "")
@@ -102,6 +105,12 @@ class MessageFormatter:
             if text.lower().startswith(prefix):
                 text = text.split(":", 1)[1].strip()
                 break
+        if txt_output:
+            text = re.sub(r"~~(.*?)~~", r"-\1-", text)
+            text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+            text = re.sub(r"\*(.*?)\*", r"\1", text)
+            return text
+        
         # markdown -> HTML (basic)
         text = re.sub(r"~~(.*?)~~", r"<s>\1</s>", text)
         text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
@@ -193,10 +202,13 @@ class MessageFormatter:
         return []
 
     # ----------------- render do HTML -----------------
-    def save_html(self, all_lines: List[str], file_path: str):
+    def save_html(self, all_lines: List[str], file_path: str, txt_output: bool = False):
         """Uloží HTML file. all_lines jsou už normalized a připravené."""
         self.max_line_len = max((self.visible_len(line) for line in all_lines), default=0)
         self.event_save_html.emit(file_path, self.max_line_len)
+        if txt_output:
+            self.save_txt(all_lines, file_path)
+            return
         html_lines = "\n".join(all_lines)
         html_content = f"""<!DOCTYPE html>
 <html lang="cs">
@@ -230,7 +242,13 @@ s {{ text-decoration: line-through; }}
 """
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(html_content)
-
+    def save_txt(self,all_lines: List[str], file_path: str):
+        """Uloží TXT file. all_lines jsou už normalized a připravené."""
+        all_lines = [line.replace("&nbsp;", " ") for line in all_lines]
+        txt_lines = "\n".join(all_lines)
+        with open(file_path, "w", encoding="utf-8") as f:
+            f.write(txt_lines)
+        
 # -----------------------------------------------------------------------------
 # ChannelWatcher
 # - hlavní logika: načítání, cache, detekce změn, mazání (auto/manual), listener
@@ -250,6 +268,7 @@ class ChannelWatcher:
         max_rows_per_column: int = 9,
         max_column_width: int = 40,
         column_spacing: int = 2,
+        txt_output: bool = False,
        
     ):
         # parametry
@@ -263,6 +282,7 @@ class ChannelWatcher:
         self.show_author_mode = show_author_mode
         self.ignore_mode = ignore_mode
         self.manual_clear = manual_clear
+        self.txt_output = txt_output
         
 
         # formatter instance (řeší celý rendering & parsing)
@@ -399,10 +419,12 @@ class ChannelWatcher:
 
         # sort added by id (ascending)
         added.sort(key=lambda x: x["id"])
+        """
         if added:
             print(f"💡 Přidáno {len(added)} zpráv.")
         if edited:
             print(f"🔄 Upraveno {len(edited)} zpráv.")
+        """
         return {"added": added, "edited": edited}
 
     # ----------------- aktualizace cache a správa věku -----------------
@@ -450,7 +472,7 @@ class ChannelWatcher:
             is_bot = item.get("is_bot", False)
             
             # provést normalizaci (markdown -> HTML)
-            content_lines = [self.formatter.normalize_line(l) for l in content.splitlines()]
+            content_lines = [self.formatter.normalize_line(l, self.txt_output) for l in content.splitlines()]
             if not content_lines:
                 continue
 
@@ -518,10 +540,10 @@ class ChannelWatcher:
             self.integrate_changes(added, edited)
             self.enrich_cache_items_from_recent(recent_msgs)
             lines = self.prepare_render_lines()
-            self.formatter.save_html(lines, self.file_path)
+            self.formatter.save_html(lines, self.file_path, self.txt_output)
             self.file_empty = False
             self.manual_delete_allowed = False  
-            print(f"💾 HTML aktualizováno ({len(lines)} řádků).")
+            print(f"💾 soubor je aktuální).")
             return lines
         try:
             recent_msgs = await self.fetch_recent(channel)
@@ -536,18 +558,18 @@ class ChannelWatcher:
                 self.last_id = added[-1]["id"] if added else self.last_id
                 return
             
-            if self.manual_clear and not self.manual_delete_allowed:
+            if self.manual_clear and not self.manual_delete_allowed and not self.file_empty:
                 self.manual_delete_allowed = True
-                print("ℹ️ Nyní je povoleno manuální mazání přes 'd'.")
+                print("ℹ️ Mazání přes 'd'.")
 
             if not self.manual_clear:
                 # žádné nové zprávy → vyčisti HTML jen jednou
                 if self.cache:
                     self.cache.clear()
                     self.old_last_id = self.last_id
-                    self.formatter.save_html([], self.file_path)
+                    self.formatter.save_html([], self.file_path, self.txt_output)
                     self.file_empty = True
-                    print("🗑️ HTML vyčištěno (žádné nové zprávy).")
+                    print("🗑️ Soubor je prázdný")
                 return
 
         except Exception as e:
@@ -557,11 +579,11 @@ class ChannelWatcher:
     # ----------------- listener pro manuální mazání -----------------
     
     def on_keypress(self, key: str):
-        if key == "d" and self.manual_delete_allowed:
-            print("🗑️  Čistím cache")
+        if key == "d" and self.manual_delete_allowed and not self.file_empty:
+            print("🗑️ Soubor je prázdný")
             self.cache = []
             self.file_empty = True
-            self.formatter.save_html([], self.file_path)
+            self.formatter.save_html([], self.file_path, self.txt_output)
             self.manual_delete_allowed = False
 
     # ----------------- hlavní smyčka -----------------
@@ -571,8 +593,10 @@ class ChannelWatcher:
         if not channel:
             print(f"🛑 Kanál s id {self.channel_id} není dostupný (get_channel returned None). Ujisti se, že bot je na serveru a má práva.")
             return
-        print(f"👀 Sleduji kanál {channel.name} ({self.channel_id})")
+        print(f"👀 Sleduji kanál {channel.name}")
         self.load_last_ids()
+        if self.txt_output:
+            self.file_path = self.file_path.replace(".html", ".txt")
         while self.running:
             await self.run_cycle(channel)
             await asyncio.sleep(self.interval)
