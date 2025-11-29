@@ -32,3 +32,4 @@ dist/
 .vscode/
 .idea/
 roll_dish.html
+config.json
