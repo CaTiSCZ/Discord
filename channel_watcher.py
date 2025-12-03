@@ -3,9 +3,13 @@ import discord
 import asyncio
 import os
 import re
+import logging
 from typing import List, Dict, Optional
 import sys
 import event
+
+logger = logging.getLogger("DiscordWatcher.ChannelWatcher")
+
 # -----------------------------------------------------------------------------
 # MessageFormatter
 # - odpovídá za normalizaci textu, parsing Avrae hodů,
@@ -18,6 +22,7 @@ class MessageFormatter:
         max_column_width: int = 40,
         column_spacing: int = 2,
         show_author_mode: str = "both",  # "both", "human", "bot", False/None
+        iniciativa_mode: bool = False,
         
     ):
         self.max_rows_per_column = max_rows_per_column
@@ -27,7 +32,7 @@ class MessageFormatter:
         self.computed_width = 650  # výchozí šířka
         self.max_line_len = 0  # pro výpočet šířky
         self.event_save_html = event.Event()
-        
+        self.iniciativa_mode = iniciativa_mode
 
 
     # ----------------- pomocné -----------------
@@ -63,6 +68,9 @@ class MessageFormatter:
     def format_columns_all(self, content_lines: List[str]) -> List[str]:
         """Zformátuje řádky do column layoutu (převzato a upraveno z původního kódu)."""
         wrapped_lines = []
+        if self.iniciativa_mode:
+            iniciativa = ["Iniciativa:"]
+            wrapped_lines.extend(iniciativa)
         for line in content_lines:
             wrapped_lines.extend(self.smart_wrap(line, self.max_column_width))
         n = len(wrapped_lines)
@@ -269,6 +277,7 @@ class ChannelWatcher:
         max_column_width: int = 40,
         column_spacing: int = 2,
         txt_output: bool = False,
+        iniciativa_mode: bool = False,
        
     ):
         # parametry
@@ -283,6 +292,7 @@ class ChannelWatcher:
         self.ignore_mode = ignore_mode
         self.manual_clear = manual_clear
         self.txt_output = txt_output
+        self.iniciativa_mode = iniciativa_mode
         
 
         # formatter instance (řeší celý rendering & parsing)
@@ -290,7 +300,7 @@ class ChannelWatcher:
             max_rows_per_column=max_rows_per_column,
             max_column_width=max_column_width,
             column_spacing=column_spacing,
-            show_author_mode=show_author_mode,
+            show_author_mode=show_author_mode, iniciativa_mode=iniciativa_mode,
         )
 
         # stav
@@ -306,7 +316,7 @@ class ChannelWatcher:
     def load_last_ids(self):
         """Načte old_last_id a last_id z last_id_file (čitelné)."""
         if not os.path.exists(self.last_id_file):
-            print(f"💡 last_id_file ({self.last_id_file}) neexistuje. Startuji s None.")
+            logger.info(f"last_id_file ({self.last_id_file}) neexistuje. Startuji s None.")
             self.old_last_id = None
             self.last_id = None
             return
@@ -322,7 +332,7 @@ class ChannelWatcher:
             self.last_id = kv.get("last_id")
             #print(f"[INIT] Načteny ID: old_last_id={self.old_last_id}, last_id={self.last_id}")
         except Exception as e:
-            print(f"❌ Nelze načíst last_id_file: {e}")
+            logger.error(f"Nelze načíst last_id_file: {e}")
             self.old_last_id = None
             self.last_id = None
 
@@ -334,7 +344,7 @@ class ChannelWatcher:
                 f.write(f"last_id={self.last_id or 0}\n")
             #print(f"[SAVE] last_id_file uložen: old_last_id={self.old_last_id}, last_id={self.last_id}")
         except Exception as e:
-            print(f"❌ Chyba při ukládání last_id_file: {e}")
+            logger.error(f"Chyba při ukládání last_id_file: {e}")
 
     # ----------------- fetch / normalizace surových zpráv -----------------
     async def fetch_recent(self, channel: discord.TextChannel) -> List[discord.Message]:
@@ -348,7 +358,7 @@ class ChannelWatcher:
             #print(f"[FETCH] Staženo {len(msgs)} posledních zpráv (limit={self.history_limit}).")
             return msgs
         except Exception as e:
-            print(f"❌ Chyba při fetchování: {e}")
+            logger.error(f"Chyba při fetchování: {e}")
             return []
 
     async def normalize_msg_obj(self, msg: discord.Message) -> Dict:
@@ -358,14 +368,14 @@ class ChannelWatcher:
             display_name = getattr(member, "display_name", msg.author.name)
         except Exception:
             display_name = msg.author.display_name if hasattr(msg.author, "display_name") else msg.author.name
-        author_name = display_name
+        author_name = re.sub(r"\s*\([^)]*\)\s*$", "", display_name)
         is_avrae = msg.author.name.lower() == "avrae"
 
         if is_avrae:
             mentioned = msg.mentions[0] if msg.mentions else None
             if mentioned:
                 member = msg.guild.get_member(mentioned.id) or await msg.guild.fetch_member(mentioned.id)
-                author_name = getattr(member, "display_name", member.name)
+                author_name = re.sub(r"\s*\([^)]*\)\s*$", "", getattr(member, "display_name", member.name))
             else:
                 author_name = "hráč"
             
@@ -543,7 +553,7 @@ class ChannelWatcher:
             self.formatter.save_html(lines, self.file_path, self.txt_output)
             self.file_empty = False
             self.manual_delete_allowed = False  
-            print(f"💾 soubor je aktuální).")
+            logger.debug(f"{self.file_path} je aktualizován.")
             return lines
         try:
             recent_msgs = await self.fetch_recent(channel)
@@ -560,7 +570,7 @@ class ChannelWatcher:
             
             if self.manual_clear and not self.manual_delete_allowed and not self.file_empty:
                 self.manual_delete_allowed = True
-                print("ℹ️ Mazání přes 'd'.")
+                logger.info("Mazání přes 'd'.")
 
             if not self.manual_clear:
                 # žádné nové zprávy → vyčisti HTML jen jednou
@@ -569,18 +579,17 @@ class ChannelWatcher:
                     self.old_last_id = self.last_id
                     self.formatter.save_html([], self.file_path, self.txt_output)
                     self.file_empty = True
-                    print("🗑️ Soubor je prázdný")
+                    logger.debug(f"{self.file_path} je prázdný")
                 return
 
         except Exception as e:
-            print(f"🛑 run_cycle selhal: {e}")
-
+            logger.error(f"run_cycle selhal: {e}")
 
     # ----------------- listener pro manuální mazání -----------------
     
     def on_keypress(self, key: str):
         if key == "d" and self.manual_delete_allowed and not self.file_empty:
-            print("🗑️ Soubor je prázdný")
+            logger.debug(f"{self.file_path} je prázdný")
             self.cache = []
             self.file_empty = True
             self.formatter.save_html([], self.file_path, self.txt_output)
@@ -591,9 +600,9 @@ class ChannelWatcher:
         """Hlavní smyčka, která spouští cykly."""
         channel = self.client.get_channel(self.channel_id)
         if not channel:
-            print(f"🛑 Kanál s id {self.channel_id} není dostupný (get_channel returned None). Ujisti se, že bot je na serveru a má práva.")
+            logger.error(f"Kanál s id {self.channel_id} není dostupný (get_channel returned None). Ujisti se, že bot je na serveru a má práva.")
             return
-        print(f"👀 Sleduji kanál {channel.name}")
+        logger.info(f"Sleduji kanál {channel.name}")
         self.load_last_ids()
         if self.txt_output:
             self.file_path = self.file_path.replace(".html", ".txt")
@@ -612,9 +621,9 @@ if __name__ == "__main__":
     import subprocess
 
 
-    script_path = os.path.join(os.path.dirname(__file__), "main_client.py")
+    script_path = os.path.join(os.path.dirname(__file__), "config_gui.py")
     print(f"⚙️ Spouštím hlavní skript: {script_path}")
     try:
         subprocess.run([sys.executable, script_path])
     except Exception as e:
-        print(f"🛑 Nepodařilo se spustit main_client.py: {e}")
+        print(f"🛑 Nepodařilo se spustit config_gui.py: {e}")
