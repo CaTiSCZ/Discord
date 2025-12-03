@@ -17,14 +17,14 @@ stop_flag = asyncio.Event()
 async def start_watchers():
     watchers = [
         ChannelWatcher(
-            client, int(os.getenv("HODY_KOSTKOU")),
+            client, int(os.getenv("TESTOVACI_CH")),
             os.getenv("HODY_KOSTKOU_FILE", "rolls.html"), os.getenv("HODY_LAST_ID", "hody_log.txt" ),
-             ignore_mode = None, show_author_mode = "human", manual_clear=False, txt_output=True,
+             ignore_mode = None, show_author_mode = "human", manual_clear=False, max_column_width = 120, txt_output=True, 
         ),
         ChannelWatcher(
-            client, int(os.getenv("INICIATIVA")),
+            client, int(os.getenv("TESTOVACI_CH")),
             os.getenv("INICIATIVA_FILE", "iniciativa_msg.html"), os.getenv("INICIATIVA_LAST_ID", "iniciativa_log.txt"),
-            ignore_mode = "bot", show_author_mode=False, manual_clear=True, txt_output=True,
+            ignore_mode = "bot", show_author_mode=False, manual_clear=True, max_rows_per_column = 11, txt_output=True,iniciativa_mode=True,
         )
     ]
     # spustí všechny watchery současně

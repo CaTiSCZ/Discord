@@ -18,15 +18,16 @@ class MessageFormatter:
         max_column_width: int = 40,
         column_spacing: int = 2,
         show_author_mode: str = "both",  # "both", "human", "bot", False/None
+        iniciativa_mode: bool = False,
         
     ):
         self.max_rows_per_column = max_rows_per_column
         self.max_column_width = max_column_width
         self.column_spacing = column_spacing
         self.show_author_mode = show_author_mode
-        self.computed_width = 650  # výchozí šířka
         self.max_line_len = 0  # pro výpočet šířky
         self.event_save_html = event.Event()
+        self.iniciativa_mode = iniciativa_mode
         
 
 
@@ -63,6 +64,9 @@ class MessageFormatter:
     def format_columns_all(self, content_lines: List[str]) -> List[str]:
         """Zformátuje řádky do column layoutu (převzato a upraveno z původního kódu)."""
         wrapped_lines = []
+        if self.iniciativa_mode:
+            iniciativa = ["Iniciativa:"]
+            wrapped_lines.extend(iniciativa)
         for line in content_lines:
             wrapped_lines.extend(self.smart_wrap(line, self.max_column_width))
         n = len(wrapped_lines)
@@ -269,6 +273,7 @@ class ChannelWatcher:
         max_column_width: int = 40,
         column_spacing: int = 2,
         txt_output: bool = False,
+        iniciativa_mode: bool = False,
        
     ):
         # parametry
@@ -283,6 +288,7 @@ class ChannelWatcher:
         self.ignore_mode = ignore_mode
         self.manual_clear = manual_clear
         self.txt_output = txt_output
+        self.iniciativa_mode = iniciativa_mode
         
 
         # formatter instance (řeší celý rendering & parsing)
@@ -290,7 +296,7 @@ class ChannelWatcher:
             max_rows_per_column=max_rows_per_column,
             max_column_width=max_column_width,
             column_spacing=column_spacing,
-            show_author_mode=show_author_mode,
+            show_author_mode=show_author_mode, iniciativa_mode=iniciativa_mode,
         )
 
         # stav
@@ -358,14 +364,16 @@ class ChannelWatcher:
             display_name = getattr(member, "display_name", msg.author.name)
         except Exception:
             display_name = msg.author.display_name if hasattr(msg.author, "display_name") else msg.author.name
-        author_name = display_name
+        # remove trailing parenthetical notes from display name, e.g. "Takahiro (15 AntiDémon d4)" -> "Takahiro"
+        author_name = re.sub(r"\s*\([^)]*\)\s*$", "", display_name)
         is_avrae = msg.author.name.lower() == "avrae"
 
         if is_avrae:
             mentioned = msg.mentions[0] if msg.mentions else None
             if mentioned:
                 member = msg.guild.get_member(mentioned.id) or await msg.guild.fetch_member(mentioned.id)
-                author_name = getattr(member, "display_name", member.name)
+                # also strip parentheses from the mentioned user's display name
+                author_name = re.sub(r"\s*\([^)]*\)\s*$", "", getattr(member, "display_name", member.name))
             else:
                 author_name = "hráč"
             
