@@ -3,7 +3,7 @@ import discord
 import asyncio
 import json
 import os
-import threading
+import sys
 import logging
 import subprocess
 from channel_watcher import ChannelWatcher
