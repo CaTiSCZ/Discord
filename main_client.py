@@ -44,7 +44,7 @@ async def start_watchers(client, config, keyboard_listener: KeyboardListener = N
             max_column_width=int(w["max_column_width"]),
             column_spacing=int(w.get("column_spacing", 2)),
             txt_output=bool(w["txt_output"]),
-            iniciativa_mode=bool(w.get("iniciativa_mode", False)),
+            header_text=w.get("header_text", "") or "",
         )
         # pokud máme KeyboardListener, zaregistruj on_keypress callback
         if keyboard_listener:

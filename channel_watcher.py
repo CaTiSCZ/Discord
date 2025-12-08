@@ -22,7 +22,7 @@ class MessageFormatter:
         max_column_width: int = 40,
         column_spacing: int = 2,
         show_author_mode: str = "both",  # "both", "human", "bot", False/None
-        iniciativa_mode: bool = False,
+        header_text: str = "",
         
     ):
         self.max_rows_per_column = max_rows_per_column
@@ -32,7 +32,7 @@ class MessageFormatter:
         self.computed_width = 650  # výchozí šířka
         self.max_line_len = 0  # pro výpočet šířky
         self.event_save_html = event.Event()
-        self.iniciativa_mode = iniciativa_mode
+        self.header_text = header_text
 
 
     # ----------------- pomocné -----------------
@@ -68,9 +68,8 @@ class MessageFormatter:
     def format_columns_all(self, content_lines: List[str]) -> List[str]:
         """Zformátuje řádky do column layoutu (převzato a upraveno z původního kódu)."""
         wrapped_lines = []
-        if self.iniciativa_mode:
-            iniciativa = ["Iniciativa:"]
-            wrapped_lines.extend(iniciativa)
+        if self.header_text:
+            wrapped_lines.append(self.header_text)
         for line in content_lines:
             wrapped_lines.extend(self.smart_wrap(line, self.max_column_width))
         n = len(wrapped_lines)
@@ -277,8 +276,7 @@ class ChannelWatcher:
         max_column_width: int = 40,
         column_spacing: int = 2,
         txt_output: bool = False,
-        iniciativa_mode: bool = False,
-       
+        header_text: str = "",
     ):
         # parametry
         self.client = client
@@ -292,15 +290,14 @@ class ChannelWatcher:
         self.ignore_mode = ignore_mode
         self.manual_clear = manual_clear
         self.txt_output = txt_output
-        self.iniciativa_mode = iniciativa_mode
-        
+        self.header_text = header_text
 
         # formatter instance (řeší celý rendering & parsing)
         self.formatter = MessageFormatter(
             max_rows_per_column=max_rows_per_column,
             max_column_width=max_column_width,
             column_spacing=column_spacing,
-            show_author_mode=show_author_mode, iniciativa_mode=iniciativa_mode,
+            show_author_mode=show_author_mode, header_text=header_text,
         )
 
         # stav

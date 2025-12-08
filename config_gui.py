@@ -26,7 +26,7 @@ DEFAULT_WATCHER = {
     "txt_output": True,
     "max_rows_per_column": 9,
     "max_column_width": 40,
-    "iniciativa_mode": False,
+    "header_text": "",
     "column_spacing": 2
 }
 
@@ -239,10 +239,9 @@ class ConfigGUI:
         watcher["author_combo"] = author_combo
         row += 1
 
-        # -- Čtvrtý řádek: checkboxes
+        # -- Čtvrtý řádek: checkboxes + header text
         manual_var = tk.BooleanVar(value=watcher.get("manual_clear", False))
         txt_var = tk.BooleanVar(value=watcher.get("txt_output", True))
-        iniciativa_var = tk.BooleanVar(value=watcher.get("iniciativa_mode", False))
 
         tk.Checkbutton(lf, text="Manual Clear (d)", variable=manual_var).grid(row=row, column=0, sticky="w")
         watcher["manual_var"] = manual_var
@@ -250,8 +249,11 @@ class ConfigGUI:
         tk.Checkbutton(lf, text="TXT Output", variable=txt_var).grid(row=row, column=1, sticky="w")
         watcher["txt_var"] = txt_var
 
-        tk.Checkbutton(lf, text="Iniciativa", variable=iniciativa_var).grid(row=row, column=2, sticky="w")
-        watcher["iniciativa_var"] = iniciativa_var
+        tk.Label(lf, text="Nadpis:").grid(row=row, column=2, sticky="w")
+        header_entry = tk.Entry(lf, width=16)
+        header_entry.insert(0, str(watcher.get("header_text", "")))
+        header_entry.grid(row=row, column=3, sticky="w")
+        watcher["header_entry"] = header_entry
 
         # -- Poslední: Remove button
         tk.Button(lf, text="Remove", fg="red", command=lambda: self.remove_watcher(idx)).grid(row=row, column=5, sticky="e")
@@ -282,7 +284,7 @@ class ConfigGUI:
                 "ignore_mode": None if (w.get("ignore_combo") and w["ignore_combo"].get() == "None") else (w.get("ignore_combo").get() if "ignore_combo" in w else w.get("ignore_mode", None)),
                 "manual_clear": w.get("manual_var").get() if "manual_var" in w else bool(w.get("manual_clear", False)),
                 "txt_output": w.get("txt_var").get() if "txt_var" in w else bool(w.get("txt_output", True)),
-                "iniciativa_mode": w.get("iniciativa_var").get() if "iniciativa_var" in w else bool(w.get("iniciativa_mode", False)),
+                "header_text": w.get("header_entry").get() if "header_entry" in w else str(w.get("header_text", "")),
                 "max_rows_per_column": int(w.get("max_rows_per_column_entry").get() if "max_rows_per_column_entry" in w else w.get("max_rows_per_column", 9)),
                 "max_column_width": int(w.get("max_column_width_entry").get() if "max_column_width_entry" in w else w.get("max_column_width", 40)),
                 "column_spacing": int(w.get("column_spacing", 2))
@@ -302,7 +304,7 @@ class ConfigGUI:
         self.save_config()
         for w in self.config["watchers"]:
             # Zamknout vstupy
-            for k in ["channel_id_entry","file_path_entry","last_id_file_entry","interval_entry","history_limit_entry"]:
+            for k in ["channel_id_entry","file_path_entry","last_id_file_entry","interval_entry","history_limit_entry","header_entry"]:
                 if k in w: w[k].config(state="disabled")
             if "author_combo" in w: w["author_combo"].config(state="disabled")
             if "ignore_combo" in w: w["ignore_combo"].config(state="disabled")
