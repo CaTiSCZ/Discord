@@ -52,7 +52,7 @@ async def start_watchers(client, config, keyboard_listener: KeyboardListener = N
         watchers.append(watcher)
         tasks.append(asyncio.create_task(watcher.run()))
 
-    logger.info(f"Starting {len(watchers)} watchers...")
+    logger.debug(f"Starting {len(watchers)} watchers...")
     await asyncio.gather(*tasks)
 
 
@@ -80,7 +80,7 @@ def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_liste
         logger.info("Client has stopped.")
 
     except KeyboardInterrupt:
-        logger.info("Interrupt – ukončuji bota a watchery...")
+        logger.info("Interrupt – stopping client...")
         for task in asyncio.all_tasks(loop):
             task.cancel()
         loop.run_until_complete(asyncio.gather(*asyncio.all_tasks(loop), return_exceptions=True))
@@ -116,7 +116,7 @@ def main():
     try:
         run_client_with_loop(config, loop, keyboard_listener=None)
     except Exception as e:
-        logger.error(f"Chyba při spuštění klienta: {e}")
+        logger.error(f"Client launch failed: {e}")
 
 
 # -------------------------------------------------------------
@@ -127,5 +127,5 @@ if __name__ == "__main__":
     try:
         subprocess.run([sys.executable, script_path])
     except Exception as e:
-        logger.error(f"Chyba při spouštění GUI: {e} — fallback na headless main()")
+        logger.error(f"GUI launch failed: {e} — fallback on headless main()")
         main()

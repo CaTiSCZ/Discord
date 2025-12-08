@@ -117,7 +117,7 @@ class ConfigGUI:
         self.root.bind('<d>', lambda e: self.on_key_press('d'))
         self.root.bind('<q>', lambda e: self.on_key_press('q'))
 
-        self.logger.info("GUI initialized.")
+        #self.logger.info("GUI initialized.")
         self.render_watchers()
 
     # ----------------------------------------------------------------
@@ -249,7 +249,7 @@ class ConfigGUI:
         tk.Checkbutton(lf, text="TXT Output", variable=txt_var).grid(row=row, column=1, sticky="w")
         watcher["txt_var"] = txt_var
 
-        tk.Label(lf, text="Nadpis:").grid(row=row, column=2, sticky="w")
+        tk.Label(lf, text="Header:").grid(row=row, column=2, sticky="w")
         header_entry = tk.Entry(lf, width=16)
         header_entry.insert(0, str(watcher.get("header_text", "")))
         header_entry.grid(row=row, column=3, sticky="w")
@@ -321,7 +321,7 @@ class ConfigGUI:
             try:
                 main_client.run_client_with_loop(self.config, loop, keyboard_listener=kb)
             except Exception as e:
-                self.logger.error(f"Chyba při spuštění klienta: {e}")
+                self.logger.error(f"Client launch failed: {e}")
 
         t = threading.Thread(target=target, daemon=True)
         t.start()
@@ -341,7 +341,7 @@ class ConfigGUI:
             self.bot_running = False
             return
 
-        self.logger.info("Zastavuji bota...")
+        self.logger.info("Stoping bot...")
         # Pošleme 'q' do listeneru (pokud existuje) -> listener zavolá loop.stop()
         try:
             if getattr(self, "_kb", None):
@@ -359,7 +359,7 @@ class ConfigGUI:
                 except Exception:
                     pass
         except Exception as e:
-            print(f"❌ Chyba při zastavování listeneru: {e}")
+            print(f"❌ Listener stoping failed: {e}")
 
         # počkat krátce na ukončení bot-threadu
         try:
@@ -369,36 +369,36 @@ class ConfigGUI:
                 except Exception:
                     pass
         except Exception as e:
-            print(f"❌ Chyba při čekání na bot thread: {e}")
+            print(f"❌ Wating on bot thread: {e}")
 
         # uklidit reference a stav
         self._kb = None
         self._bot_thread = None
         self.bot_running = False
-        self.logger.info("Bot zastaven.")
+        self.logger.info("Bot stoped.")
 
     # ----------------------------------------------------------------
     def send_key_to_bot(self, key: str):
         """Emuluj stisk klávesy -> pošli do KeyboardListener (pokud běží)."""
         if not getattr(self, "_kb", None) or not self.bot_running:
-            self.logger.warning("Bot není spuštěný.")
+            self.logger.warning("Bot isn't running.")
             return
         try:
             self._kb.emit_key(key)
         except Exception as e:
-            self.logger.error(f"Nepodařilo se odeslat klávesu: {e}")
+            self.logger.error(f"Key sending failed: {e}")
 
     # ----------------------------------------------------------------
     def delete_files(self):
         # pokud běží bot, emuluj 'd' (watchery tak smažou svůj obsah)
         if self.bot_running and getattr(self, "_kb", None):
             self.send_key_to_bot("d")
-            self.logger.info("Emulováno: stisk 'd' odeslán do watcherů.")
+            self.logger.info("Sent key 'd' to watchers.")
             return
 
         # fallback: mazání souborů lokálně
         if not self.bot_running:
-            self.logger.warning("Spusťte bota pro mazání souborů.")
+            self.logger.warning("Start bot for delete files.")
             return
         for w in self.config["watchers"]:
             try:
@@ -412,7 +412,7 @@ class ConfigGUI:
         # pokud běží bot a máme listener, pouze ho zastav a NEZAVÍREJ GUI
         if self.bot_running and getattr(self, "_kb", None):
             self.stop_bot()
-            self.logger.info("Bot byl zastaven. GUI zůstává otevřené.")
+            self.logger.info("Bot stoped")
             return
 
         if not self.bot_running:
@@ -425,24 +425,38 @@ class ConfigGUI:
     # ----------------------------------------------------------------
     def on_close(self):
         """Handler pro kliknutí na křížek okna.
-        Pokud běží bot, nabídne jeho zastavení a poté zavře GUI.
+        Po stisku X: pokud běží bot, zastav ho (stop_bot) a poté ukonči GUI a aplikaci.
+        (Chování: Quit Bot tlačítko -> zastaví bota a GUI zůstane; X -> zastaví bota a ukončí vše.)
         """
-        if self.bot_running:
-            if messagebox.askyesno("Exit", "Bot běží. Chcete ho zastavit a ukončit aplikaci?"):
-                # stop everything that was started
-                self.stop_bot(wait_secs=2.0)
+        try:
+            if self.bot_running:
+                # Ujisti se, že vše, co jsme spustili, je správně ukončeno.
                 try:
-                    self.root.destroy()
-                except Exception:
-                    self.root.quit()
-            else:
-                # necháme GUI otevřené
-                return
-        else:
+                    # Požádej o zastavení (emit 'q', stop listeneru, join thread)
+                    self.stop_bot(wait_secs=2.0)
+                except Exception as e:
+                    # logni, ale pokračuj v ukončení GUI
+                    try:
+                        self.logger.error(f"Bot stopping failed during closing GUI: {e}")
+                    except Exception:
+                        pass
+            # Po pokusu o zastavení bota ukonči GUI
             try:
                 self.root.destroy()
             except Exception:
-                self.root.quit()
+                try:
+                    self.root.quit()
+                except Exception:
+                    pass
+        except Exception:
+            # fallback: pokud cokoli selže, zkusme GUI ukončit
+            try:
+                self.root.destroy()
+            except Exception:
+                try:
+                    self.root.quit()
+                except Exception:
+                    pass
 
 
 # --------------------------------------------------------------------

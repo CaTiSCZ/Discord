@@ -62,7 +62,7 @@ class Logging(AbstractContextManager):
         logging.getLogger("discord.gateway").setLevel(logging.CRITICAL)
         
         self.logger = logging.getLogger(application_logger)
-        self.logger.setLevel(logging.DEBUG) # nastavení úrovně vypisování hlášek - global
+        self.logger.setLevel(logging.INFO) # nastavení úrovně vypisování hlášek - global
         self.logger_queue = Queue(-1)
         self.logger_queue_handler = logging.handlers.QueueHandler(self.logger_queue)
         self.logger.addHandler(self.logger_queue_handler)

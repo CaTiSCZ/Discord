@@ -313,7 +313,7 @@ class ChannelWatcher:
     def load_last_ids(self):
         """Načte old_last_id a last_id z last_id_file (čitelné)."""
         if not os.path.exists(self.last_id_file):
-            logger.info(f"last_id_file ({self.last_id_file}) neexistuje. Startuji s None.")
+            logger.info(f"last_id_file ({self.last_id_file}) not found.")
             self.old_last_id = None
             self.last_id = None
             return
@@ -329,7 +329,7 @@ class ChannelWatcher:
             self.last_id = kv.get("last_id")
             #print(f"[INIT] Načteny ID: old_last_id={self.old_last_id}, last_id={self.last_id}")
         except Exception as e:
-            logger.error(f"Nelze načíst last_id_file: {e}")
+            logger.error(f"ID file reading failed: {e}")
             self.old_last_id = None
             self.last_id = None
 
@@ -341,7 +341,7 @@ class ChannelWatcher:
                 f.write(f"last_id={self.last_id or 0}\n")
             #print(f"[SAVE] last_id_file uložen: old_last_id={self.old_last_id}, last_id={self.last_id}")
         except Exception as e:
-            logger.error(f"Chyba při ukládání last_id_file: {e}")
+            logger.error(f"ID file saving failed: {e}")
 
     # ----------------- fetch / normalizace surových zpráv -----------------
     async def fetch_recent(self, channel: discord.TextChannel) -> List[discord.Message]:
@@ -355,7 +355,7 @@ class ChannelWatcher:
             #print(f"[FETCH] Staženo {len(msgs)} posledních zpráv (limit={self.history_limit}).")
             return msgs
         except Exception as e:
-            logger.error(f"Chyba při fetchování: {e}")
+            logger.error(f"Fetch failed: {e}")
             return []
 
     async def normalize_msg_obj(self, msg: discord.Message) -> Dict:
@@ -426,12 +426,7 @@ class ChannelWatcher:
 
         # sort added by id (ascending)
         added.sort(key=lambda x: x["id"])
-        """
-        if added:
-            print(f"💡 Přidáno {len(added)} zpráv.")
-        if edited:
-            print(f"🔄 Upraveno {len(edited)} zpráv.")
-        """
+
         return {"added": added, "edited": edited}
 
     # ----------------- aktualizace cache a správa věku -----------------
@@ -550,7 +545,7 @@ class ChannelWatcher:
             self.formatter.save_html(lines, self.file_path, self.txt_output)
             self.file_empty = False
             self.manual_delete_allowed = False  
-            logger.debug(f"{self.file_path} je aktualizován.")
+            logger.debug(f"{self.file_path} changed.")
             return lines
         try:
             recent_msgs = await self.fetch_recent(channel)
@@ -567,7 +562,7 @@ class ChannelWatcher:
             
             if self.manual_clear and not self.manual_delete_allowed and not self.file_empty:
                 self.manual_delete_allowed = True
-                logger.info("Mazání přes 'd'.")
+                logger.info(f"Manual clear {self.file_path} allowed.")
 
             if not self.manual_clear:
                 # žádné nové zprávy → vyčisti HTML jen jednou
@@ -576,7 +571,7 @@ class ChannelWatcher:
                     self.old_last_id = self.last_id
                     self.formatter.save_html([], self.file_path, self.txt_output)
                     self.file_empty = True
-                    logger.debug(f"{self.file_path} je prázdný")
+                    logger.debug(f"No new message, {self.file_path} is cleared")
                 return
 
         except Exception as e:
@@ -586,7 +581,7 @@ class ChannelWatcher:
     
     def on_keypress(self, key: str):
         if key == "d" and self.manual_delete_allowed and not self.file_empty:
-            logger.debug(f"{self.file_path} je prázdný")
+            logger.debug(f"{self.file_path} is cleared")
             self.cache = []
             self.file_empty = True
             self.formatter.save_html([], self.file_path, self.txt_output)
@@ -597,9 +592,9 @@ class ChannelWatcher:
         """Hlavní smyčka, která spouští cykly."""
         channel = self.client.get_channel(self.channel_id)
         if not channel:
-            logger.error(f"Kanál s id {self.channel_id} není dostupný (get_channel returned None). Ujisti se, že bot je na serveru a má práva.")
+            logger.error(f"Channel {self.channel_id} not responding (get_channel returned None).")
             return
-        logger.info(f"Sleduji kanál {channel.name}")
+        logger.info(f"Watch channel: {channel.name}")
         self.load_last_ids()
         if self.txt_output:
             self.file_path = self.file_path.replace(".html", ".txt")

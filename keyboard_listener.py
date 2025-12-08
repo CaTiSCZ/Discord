@@ -39,17 +39,17 @@ class KeyboardListener(threading.Thread):
             try:
                 fn(key)
             except Exception as e:
-                logger.error(f"Chyba v callbacku: {e}")
+                logger.error(f"Callback: {e}")
 
         if key == "q":
-            logger.info("KeyboardListener: Ukončuji program…")
+            logger.info("KeyboardListener: stopping event loop on 'q' keypress.")
             try:
                 self.loop.call_soon_threadsafe(self.loop.stop)
             except Exception:
                 pass
 
     def run(self):
-        logger.debug("KeyboardListener spuštěn (q = quit, d = delete).")
+        logger.debug("KeyboardListener running (q = quit, d = delete).")
         while not self._stop_event.is_set():
             # nejdřív zpracovat programové klávesy z fronty
             try:
