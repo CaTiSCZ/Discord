@@ -290,9 +290,10 @@ class ConfigGUI:
                 "column_spacing": int(w.get("column_spacing", 2))
             }
             clean_watchers.append(clean)
-        self.config["watchers"] = clean_watchers
+        config=self.config.copy()
+        config["watchers"] = clean_watchers
         with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(self.config, f, indent=4)
+            json.dump(config, f, indent=4)
         self.logger.info("Configuration saved successfully.")
 
     # ----------------------------------------------------------------
