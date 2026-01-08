@@ -30,6 +30,25 @@ DEFAULT_WATCHER = {
     "column_spacing": 2
 }
 
+def set_labelframe_state(labelframe, enable=False):
+    state = 'disabled' if not enable else 'normal'
+    for child in labelframe.winfo_children():
+        # rekurze pro kontejnery (Frame/LabelFrame/ttk.Frame atd.)
+        if isinstance(child, (tk.Frame, ttk.Frame, tk.LabelFrame, ttk.LabelFrame)):
+            set_labelframe_state(child, enable=enable)
+            continue
+        try:
+            # ttk widgety mají metodu state()
+            if hasattr(child, 'state') and callable(child.state):
+                if not enable:
+                    child.state(['disabled'])
+                else:
+                    child.state(['!disabled'])
+            else:
+                child.configure(state=state)
+        except Exception:
+            # některé widgety nemají state/configure stejným způsobem — přeskočíme je
+            pass
 
 class ConfigGUI:
     def __init__(self, root):
@@ -174,6 +193,7 @@ class ConfigGUI:
         """Render a watcher v multi-column layout pro úsporu vertikálního místa."""
         lf = ttk.LabelFrame(self.scroll_frame, text=f"Watcher {idx+1}")
         lf.pack(fill="x", padx=10, pady=5)
+        watcher["frame"] = lf
 
         # ROW = logická řada, která se bude přepočítávat na grid
         # Každý "row" ve smyslu gridu se může skládat z více sloupců
@@ -273,6 +293,7 @@ class ConfigGUI:
     def save_config(self):
         self.config["TOKEN"] = self.token_entry.get()
         clean_watchers = []
+        #watcher by měl být třída
         for w in self.config["watchers"]:
             clean = {
                 "channel_id": w.get("channel_id_entry").get() if "channel_id_entry" in w else w.get("channel_id", ""),
@@ -305,10 +326,7 @@ class ConfigGUI:
         self.save_config()
         for w in self.config["watchers"]:
             # Zamknout vstupy
-            for k in ["channel_id_entry","file_path_entry","last_id_file_entry","interval_entry","history_limit_entry","header_entry"]:
-                if k in w: w[k].config(state="disabled")
-            if "author_combo" in w: w["author_combo"].config(state="disabled")
-            if "ignore_combo" in w: w["ignore_combo"].config(state="disabled")
+            if "frame" in w: set_labelframe_state(w["frame"], enable=False)
         self.bot_running = True
         self.logger.info("Discord bot launched. Inputs locked.")
 
@@ -377,6 +395,10 @@ class ConfigGUI:
         self._bot_thread = None
         self.bot_running = False
         self.logger.info("Bot stoped.")
+        for w in self.config["watchers"]:
+            # Zamknout vstupy
+            if "frame" in w: set_labelframe_state(w["frame"], enable=True)
+
 
     # ----------------------------------------------------------------
     def send_key_to_bot(self, key: str):
@@ -415,13 +437,11 @@ class ConfigGUI:
             self.stop_bot()
             self.logger.info("Bot stoped")
             return
+        else:
+            self.logger.info("Bot isn't running.")
 
-        if not self.bot_running:
-            self.root.quit()
-            return
-        self.bot_running = False
-        self.logger.info("Bot stopped.")
-        self.root.quit()
+        
+        
 
     # ----------------------------------------------------------------
     def on_close(self):

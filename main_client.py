@@ -58,6 +58,7 @@ async def start_watchers(client, config, keyboard_listener: KeyboardListener = N
 
 # nová funkce: spustí klienta v předaném loopu a použije keyboard_listener
 def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_listener: KeyboardListener = None):
+    # TODO: zkontrolovat, jestli jsme opravou gui.save_config nerozbili config, který se používá tady
     TOKEN = config.get("TOKEN", "").strip()
     if not TOKEN:
         raise RuntimeError("TOKEN not defined in config.json (use config_gui.py to set it).")

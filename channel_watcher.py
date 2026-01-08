@@ -439,7 +439,7 @@ class ChannelWatcher:
             self.cache = [m for m in self.cache if m["id"] > self.old_last_id] 
         for msg in added:
             if not any(c["id"] == msg["id"] for c in self.cache):
-                self.cache.append({
+                self.cache.append({ # TODO: odkrokovat si co přesně obsahuje msg
                     "id": msg["id"],
                     "author": msg["author"],
                     "content": msg["content"],
@@ -536,17 +536,18 @@ class ChannelWatcher:
                 item.setdefault("is_bot", False)
                 item.setdefault("is_from_avrae", False)
 
+    def save_changes(self, added, edited, recent_msgs):
+        self.integrate_changes(added, edited)
+        self.enrich_cache_items_from_recent(recent_msgs)
+        lines = self.prepare_render_lines()
+        self.formatter.save_html(lines, self.file_path, self.txt_output)
+        self.file_empty = False
+        self.manual_delete_allowed = False  
+        logger.debug(f"{self.file_path} changed.")
+        return lines
+
     # ----------------- hlavní cyklus (jeden běh) -----------------
     async def run_cycle(self, channel: discord.TextChannel):
-        def save_changes(added, edited, recent_msgs):
-            self.integrate_changes(added, edited)
-            self.enrich_cache_items_from_recent(recent_msgs)
-            lines = self.prepare_render_lines()
-            self.formatter.save_html(lines, self.file_path, self.txt_output)
-            self.file_empty = False
-            self.manual_delete_allowed = False  
-            logger.debug(f"{self.file_path} changed.")
-            return lines
         try:
             recent_msgs = await self.fetch_recent(channel)
             result = await self.find_new_and_updates(recent_msgs)
@@ -556,7 +557,7 @@ class ChannelWatcher:
 
             if added or edited:
                 # nové zprávy → aktualizuj cache a HTML
-                save_changes(added, edited, recent_msgs)
+                self.save_changes(added, edited, recent_msgs)
                 self.last_id = added[-1]["id"] if added else self.last_id
                 return
             
@@ -575,7 +576,7 @@ class ChannelWatcher:
                 return
 
         except Exception as e:
-            logger.error(f"run_cycle selhal: {e}")
+            logger.error(f"run_cycle failed: {e}")
 
     # ----------------- listener pro manuální mazání -----------------
     
