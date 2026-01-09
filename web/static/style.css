@@ -1,0 +1,61 @@
+/* Reset */
+html, body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: monospace;
+}
+
+
+/* Obecný panel */
+.panel {
+  position: absolute;
+  box-sizing: border-box;
+
+  background: rgba(0, 0, 0, 0.9);
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+
+  padding: 10px;
+}
+
+/* ===== POZICE PANELŮ ===== */
+
+/* Panel A – iniciativa */
+#panel-a {
+  top: 700px;
+  left: 2px;
+  
+  width: auto;
+  max-width: 2000px;
+  height: auto;
+  max-height: 350px;
+}
+
+/* Panel B – hody kostkou */
+#panel-b {
+  top: 1060px;
+  left: 2px;
+
+  width: auto;
+  max-width: 2000px;
+  height: auto;
+  max-height: 380px;
+}
+
+/* Nadpis */
+.panel h2 {
+  margin: 0 0 8px 0;
+  font-size: 30px;
+}
+
+/* Textový obsah */
+.panel pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 26px;
+  line-height: 1.3;
+}
