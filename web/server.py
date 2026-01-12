@@ -7,6 +7,8 @@ import asyncio
 from contextlib import asynccontextmanager
 
 from event import on_panel_update
+from watcher import watcher_test_loop
+
 
 clients: set[WebSocket] = set()
 
@@ -26,6 +28,7 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(broadcast(panel, text))
 
     on_panel_update.connect(handle_panel_update)
+    asyncio.create_task(watcher_test_loop()) #vykreslování z watcheru do serveru
 
     yield  # ⬅️ server běží
 
