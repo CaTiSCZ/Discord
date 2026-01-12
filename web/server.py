@@ -2,8 +2,10 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from fastapi.responses import HTMLResponse
+from matplotlib.pylab import broadcast
 from starlette.requests import Request
 import asyncio
+from event import on_panel_update
 
 app = FastAPI()
 
@@ -15,6 +17,7 @@ clients: set[WebSocket] = set()
 @app.get("/", response_class=HTMLResponse)
 async def overlay(request: Request):
     return templates.TemplateResponse("display.html", {"request": request})
+
 
 @app.websocket("/ws")
 async def websocket_endpoint(ws: WebSocket):
@@ -31,7 +34,8 @@ async def websocket_endpoint(ws: WebSocket):
                 "panel": "panel-a",
                 "text": f"TEST: zpráva z Python serveru\nČas běží...\nKolo č.: {i}"
             })
-
+            on_panel_update.connect(lambda panel, text: asyncio.create_task(broadcast(panel, text)))
+        
     except WebSocketDisconnect:
         print("WS disconnected")
 

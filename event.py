@@ -18,8 +18,16 @@ class Event:
         with self._lock:
             self._functions.append(Event.Function(function, args, kwargs))
 
+    def disconnect(self, function: Callable[[Any], None]) -> None:
+        with self._lock:
+            self._functions = [f for f in self._functions if f.function != function]
+
     def emit(self, *args, **kwargs) -> None:
         with self._lock:
             for func in self._functions:
-                func.function(*args, *func.args, **(func.kwargs | kwargs))
+                try:
+                    func.function(*args, *func.args, **(func.kwargs | kwargs))
+                except Exception as e:
+                    print(f"Error emitting event to {func.function}: {e}")
+on_panel_update = Event()
                 
