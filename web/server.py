@@ -20,21 +20,20 @@ async def overlay(request: Request):
 async def websocket_endpoint(ws: WebSocket):
     await ws.accept()
     clients.add(ws)
-
-    # testovací data po připojení
-    await ws.send_json({
-        "panel": "panel-a",
-        "text": "WebSocket připojen ✔\nČekám na data…"
-    })
+    print("WS connected")
 
     try:
+        i = 0
         while True:
-            # zatím jen udržujeme spojení
             await asyncio.sleep(10)
-    except WebSocketDisconnect:
-        clients.remove(ws)
+            i += 1
+            await ws.send_json({
+                "panel": "panel-a",
+                "text": f"TEST: zpráva z Python serveru\nČas běží...\nKolo č.: {i}"
+            })
 
-# helper – později tohle zavolá watcher
-async def broadcast(panel: str, text: str):
-    for ws in list(clients):
-        await ws.send_json({"panel": panel, "text": text})
+    except WebSocketDisconnect:
+        print("WS disconnected")
+
+    finally:
+        clients.discard(ws)  # bezpečné, nikdy nehodí chybu
