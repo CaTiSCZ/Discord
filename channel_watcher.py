@@ -23,6 +23,10 @@ class MessageFormatter:
         column_spacing: int = 2,
         show_author_mode: str = "both",  # "both", "human", "bot", False/None
         header_text: str = "",
+        sio = None,
+        channel_id: Optional[int] = None,
+        loop = None,
+        socket_panel: str = "panel-a",
         
     ):
         self.max_rows_per_column = max_rows_per_column
@@ -33,6 +37,10 @@ class MessageFormatter:
         self.max_line_len = 0  # pro výpočet šířky
         self.event_save_html = event.Event()
         self.header_text = header_text
+        self.sio = sio
+        self.channel_id = channel_id
+        self.loop = loop or asyncio.get_event_loop()
+        self.socket_panel = socket_panel
 
 
     # ----------------- pomocné -----------------
@@ -211,8 +219,17 @@ class MessageFormatter:
     # ----------------- render do HTML -----------------
     def save_html(self, all_lines: List[str], file_path: str, txt_output: bool = False):
         """Uloží HTML file. all_lines jsou už normalized a připravené."""
-        self.max_line_len = max((self.visible_len(line) for line in all_lines), default=0)
-        self.event_save_html.emit(file_path, self.max_line_len)
+        #self.max_line_len = max((self.visible_len(line) for line in all_lines), default=0)
+        #self.event_save_html.emit(file_path, self.max_line_len)
+        if self.sio and self.loop:
+            event_name = 'new_message' if all_lines else 'clear_messages'
+            payload = {'lines': all_lines, 'channel_id': self.socket_panel}
+            try:
+                loop = self.loop
+                if loop.is_running():
+                    asyncio.run_coroutine_threadsafe(self.sio.emit(event_name, payload), loop)
+            except Exception as e:
+                logger.error(f"Failed to emit via socket: {e}")
         if txt_output:
             self.save_txt(all_lines, file_path)
             return
@@ -267,6 +284,7 @@ class ChannelWatcher:
         channel_id: int,
         file_path: str,
         last_id_file: str,
+        socket_panel: str = "panel-a",
         interval: int = 10,
         history_limit: int = 10,
         show_author_mode: str = "both",  # "both", "human", "bot", False/None
@@ -277,11 +295,13 @@ class ChannelWatcher:
         column_spacing: int = 2,
         txt_output: bool = False,
         header_text: str = "",
+        sio = None,
     ):
         # parametry
         self.client = client
         self.loop = asyncio.get_event_loop()
         self.channel_id = channel_id
+        self.socket_panel = socket_panel
         self.file_path = file_path
         self.last_id_file = last_id_file
         self.interval = interval
@@ -291,13 +311,18 @@ class ChannelWatcher:
         self.manual_clear = manual_clear
         self.txt_output = txt_output
         self.header_text = header_text
+        self.sio = sio
 
         # formatter instance (řeší celý rendering & parsing)
         self.formatter = MessageFormatter(
             max_rows_per_column=max_rows_per_column,
             max_column_width=max_column_width,
             column_spacing=column_spacing,
-            show_author_mode=show_author_mode, header_text=header_text,
+            show_author_mode=show_author_mode, header_text=header_text, 
+            sio=self.sio,
+            channel_id=self.channel_id,
+            loop=self.loop,
+            socket_panel=self.socket_panel,
         )
 
         # stav

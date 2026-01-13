@@ -1,23 +1,34 @@
-// Zatím prázdné
-// Tady později přibude:
-// - WebSocket
-// - render dat
-// - mapování panel → watcher
-const ws = new WebSocket("ws://localhost:8000/ws");
+// Připojení k serveru (Socket.io si samo zjistí adresu, pokud běží na stejném portu)
+const socket = io(); 
 
-ws.onopen = () => {
-  console.log("WS connected");
-};
+socket.on("connect", () => {
+  console.log("Socket.io connected");
+});
 
-ws.onmessage = (event) => {
-  const data = JSON.parse(event.data);
-  const panelId = data.panel + "-content";
+// Zpracování nové zprávy (odpovídá tvému ws.onmessage)
+socket.on("new_message", (data) => {
+  // Předpokládáme, že v data.channel_id posíláš "panel-a" nebo "panel-b"
+  // Pokud tam posíláš čísla, stačí v configu nastavit ID panelu správně
+  const panelId = data.channel_id + "-content";
+  const el = document.getElementById(panelId);
+  
+  if (el) {
+    // Formatter posílá pole řádků (data.lines), spojíme je do textu
+    el.textContent = data.lines.join("\n");
+  } else {
+    console.warn("Element s ID " + panelId + " nebyl nalezen.");
+  }
+});
+
+// Zpracování vymazání (clear_messages)
+socket.on("clear_messages", (data) => {
+  const panelId = data.channel_id + "-content";
   const el = document.getElementById(panelId);
   if (el) {
-    el.textContent = data.text;
+    el.textContent = "";
   }
-};
+});
 
-ws.onclose = () => {
-  console.log("WS disconnected");
-};
+socket.on("disconnect", () => {
+  console.log("Socket.io disconnected");
+});

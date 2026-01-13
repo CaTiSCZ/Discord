@@ -16,8 +16,10 @@ CONFIG_FILE = "config.json"
 
 DEFAULT_WATCHER = {
     "channel_id": "",
+    
     "file_path": "output.txt",
     "last_id_file": "last_id.txt",
+    "socket_panel": "panel-a",
     "interval": 10,
     "history_limit": 10,
     "show_author_mode": "both",
@@ -275,6 +277,14 @@ class ConfigGUI:
         header_entry.grid(row=row, column=3, sticky="w")
         watcher["header_entry"] = header_entry
 
+        tk.Label(lf, text="Socket Panel:").grid(row=row, column=4, sticky="w")
+        panel_combo = ttk.Combobox(lf, values=["panel-a", "panel-b"], width=10)
+        panel_combo.set(str(watcher.get("socket_panel", "panel-a")))
+        panel_combo.grid(row=row, column=5, sticky="w")
+        watcher["socket_panel_combo"] = panel_combo
+        
+        row += 1
+
         # -- Poslední: Remove button
         tk.Button(lf, text="Remove", fg="red", command=lambda: self.remove_watcher(idx)).grid(row=row, column=5, sticky="e")
 
@@ -291,31 +301,42 @@ class ConfigGUI:
 
     # ----------------------------------------------------------------
     def save_config(self):
-        self.config["TOKEN"] = self.token_entry.get()
-        clean_watchers = []
-        #watcher by měl být třída
-        for w in self.config["watchers"]:
-            clean = {
-                "channel_id": w.get("channel_id_entry").get() if "channel_id_entry" in w else w.get("channel_id", ""),
-                "file_path": w.get("file_path_entry").get() if "file_path_entry" in w else w.get("file_path", "output.txt"),
-                "last_id_file": w.get("last_id_file_entry").get() if "last_id_file_entry" in w else w.get("last_id_file", "last_id.txt"),
-                "interval": int(w.get("interval_entry").get() if "interval_entry" in w else w.get("interval", 10)),
-                "history_limit": int(w.get("history_limit_entry").get() if "history_limit_entry" in w else w.get("history_limit", 10)),
-                "show_author_mode": None if (w.get("author_combo") and w["author_combo"].get() == "None") else (w.get("author_combo").get() if "author_combo" in w else w.get("show_author_mode", "both")),
-                "ignore_mode": None if (w.get("ignore_combo") and w["ignore_combo"].get() == "None") else (w.get("ignore_combo").get() if "ignore_combo" in w else w.get("ignore_mode", None)),
-                "manual_clear": w.get("manual_var").get() if "manual_var" in w else bool(w.get("manual_clear", False)),
-                "txt_output": w.get("txt_var").get() if "txt_var" in w else bool(w.get("txt_output", True)),
-                "header_text": w.get("header_entry").get() if "header_entry" in w else str(w.get("header_text", "")),
-                "max_rows_per_column": int(w.get("max_rows_per_column_entry").get() if "max_rows_per_column_entry" in w else w.get("max_rows_per_column", 9)),
-                "max_column_width": int(w.get("max_column_width_entry").get() if "max_column_width_entry" in w else w.get("max_column_width", 40)),
-                "column_spacing": int(w.get("column_spacing", 2))
-            }
-            clean_watchers.append(clean)
-        config=self.config.copy()
-        config["watchers"] = clean_watchers
-        with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-            json.dump(config, f, indent=4)
-        self.logger.info("Configuration saved successfully.")
+        try:
+            self.config["TOKEN"] = self.token_entry.get()
+            clean_watchers = []
+            #watcher by měl být třída
+            for w in self.config["watchers"]:
+                def get_int(key, default):
+                    val = w.get(key).get() if key in w else w.get(default, 0)
+                    try: return int(val)
+                    except: return default
+                clean = {
+                    "channel_id": w.get("channel_id_entry").get() if "channel_id_entry" in w else w.get("channel_id", ""),
+                    "file_path": w.get("file_path_entry").get() if "file_path_entry" in w else w.get("file_path", "output.txt"),
+                    "last_id_file": w.get("last_id_file_entry").get() if "last_id_file_entry" in w else w.get("last_id_file", "last_id.txt"),
+                    "socket_panel": w.get("socket_panel_combo").get() if "socket_panel_combo" in w else w.get("socket_panel", "panel-a"),
+                    "interval": get_int("interval_entry", 10),
+                    "history_limit": get_int("history_limit_entry", 10),
+                    "show_author_mode": None if (w.get("author_combo") and w["author_combo"].get() == "None") else (w.get("author_combo").get() if "author_combo" in w else w.get("show_author_mode", "both")),
+                    "ignore_mode": None if (w.get("ignore_combo") and w["ignore_combo"].get() == "None") else (w.get("ignore_combo").get() if "ignore_combo" in w else w.get("ignore_mode", None)),
+                    "manual_clear": w.get("manual_var").get() if "manual_var" in w else bool(w.get("manual_clear", False)),
+                    "txt_output": w.get("txt_var").get() if "txt_var" in w else bool(w.get("txt_output", True)),
+                    "header_text": w.get("header_entry").get() if "header_entry" in w else str(w.get("header_text", "")),
+                    "max_rows_per_column": get_int("max_rows_per_column_entry", 9),
+                    "max_column_width": get_int("max_column_width_entry", 40),
+                    "column_spacing": int(w.get("column_spacing", 2))
+                }
+                # Normalizace "None" řetězců na skutečné None
+                if clean["ignore_mode"] == "None": clean["ignore_mode"] = None
+                if clean["show_author_mode"] == "None": clean["show_author_mode"] = None
+                clean_watchers.append(clean)
+            config=self.config.copy()
+            config["watchers"] = clean_watchers
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(config, f, indent=4)
+            self.logger.info("Configuration saved successfully.")
+        except Exception as e:
+            self.logger.error(f"Error saving configuration: {e}")
 
     # ----------------------------------------------------------------
     def run_bot(self):
@@ -378,7 +399,7 @@ class ConfigGUI:
                 except Exception:
                     pass
         except Exception as e:
-            print(f"❌ Listener stoping failed: {e}")
+            print(f"❌ Listener stopping failed: {e}")
 
         # počkat krátce na ukončení bot-threadu
         try:
@@ -394,7 +415,7 @@ class ConfigGUI:
         self._kb = None
         self._bot_thread = None
         self.bot_running = False
-        self.logger.info("Bot stoped.")
+        self.logger.info("Bot stopped.")
         for w in self.config["watchers"]:
             # Zamknout vstupy
             if "frame" in w: set_labelframe_state(w["frame"], enable=True)
@@ -435,7 +456,7 @@ class ConfigGUI:
         # pokud běží bot a máme listener, pouze ho zastav a NEZAVÍREJ GUI
         if self.bot_running and getattr(self, "_kb", None):
             self.stop_bot()
-            self.logger.info("Bot stoped")
+            self.logger.info("Bot stopped")
             return
         else:
             self.logger.info("Bot isn't running.")

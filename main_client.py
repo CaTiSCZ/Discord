@@ -8,6 +8,7 @@ import logging
 import subprocess
 from channel_watcher import ChannelWatcher
 from keyboard_listener import KeyboardListener
+from web.server import app, sio, start_web_server
 
 logger = logging.getLogger("DiscordWatcher.MainClient")
 
@@ -23,7 +24,6 @@ def load_config():
     with open(CONFIG_FILE, "r", encoding="utf-8") as f:
         return json.load(f)
 
-
 # -------------------------------------------------------------
 async def start_watchers(client, config, keyboard_listener: KeyboardListener = None):
     watchers = []
@@ -35,6 +35,7 @@ async def start_watchers(client, config, keyboard_listener: KeyboardListener = N
             channel_id=int(w["channel_id"]),
             file_path=w["file_path"],
             last_id_file=w["last_id_file"],
+            socket_panel=w.get("socket_panel", "panel-a"),
             interval=int(w["interval"]),
             history_limit=int(w["history_limit"]),
             show_author_mode=None if w["show_author_mode"] == "None" else w["show_author_mode"],
@@ -45,6 +46,7 @@ async def start_watchers(client, config, keyboard_listener: KeyboardListener = N
             column_spacing=int(w.get("column_spacing", 2)),
             txt_output=bool(w["txt_output"]),
             header_text=w.get("header_text", "") or "",
+            sio=sio,
         )
         # pokud máme KeyboardListener, zaregistruj on_keypress callback
         if keyboard_listener:
@@ -73,8 +75,9 @@ def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_liste
     @client.event
     async def on_ready():
         logger.info(f"Logged in as {client.user}")
+        asyncio.create_task(start_web_server())
         # spustit watchers v tomtéž loopu, předat keyboard_listener
-        asyncio.create_task(start_watchers(client, config, keyboard_listener))
+        await start_watchers(client, config, keyboard_listener)
 
     try:
         loop.run_until_complete(client.start(TOKEN))
@@ -105,28 +108,39 @@ def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_liste
 
 
 # -------------------------------------------------------------
+# ... (předchozí kód: importy, Formatter, Watcher) ...
+
 def main():
     config = load_config()
     if not config.get("watchers"):
-        raise RuntimeError("No watchers defined in config.json (use config_gui.py to set them up).")
-    else:
-        logger.info(f"Loaded {len(config['watchers'])} watchers from config.json.")
+        logger.error("No watchers defined in config.json.")
+        return
 
-    # Použij run_client_with_loop (vytvoří a spravuje event loop interně)
+    # 1. Inicializace KeyboardListeneru (pokud ho chceš používat)
+    kb_listener = KeyboardListener()
+    kb_listener.start() # Běží ve vlastním vlákně (v pořádku)
+
+    # 2. Vytvoření loopu pro celou aplikaci
     loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     try:
-        run_client_with_loop(config, loop, keyboard_listener=None)
+        # 3. Spuštění všeho skrze run_client_with_loop
+        run_client_with_loop(config, loop, keyboard_listener=kb_listener)
     except Exception as e:
         logger.error(f"Client launch failed: {e}")
+    finally:
+        # 4. Úklid po vypnutí
+        if kb_listener:
+            kb_listener.stop() 
 
-
-# -------------------------------------------------------------
 if __name__ == "__main__":
-    # Pokud spouštíš main_client.py přímo, otevři GUI (config_gui.py) v samostatném procesu.
-    # To zabrání cirkulárním importům (config_gui importuje main_client).
+    # Pokud existuje config_gui, spustíme ho, jinak hned main
     script_path = os.path.join(os.path.dirname(__file__), "config_gui.py")
-    try:
-        subprocess.run([sys.executable, script_path])
-    except Exception as e:
-        logger.error(f"GUI launch failed: {e} — fallback on headless main()")
+    if os.path.exists(script_path):
+        try:
+            subprocess.run([sys.executable, script_path])
+        except Exception as e:
+            main()
+    else:
         main()

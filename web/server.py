@@ -1,75 +1,61 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+import socketio
+from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from fastapi.responses import HTMLResponse
 from starlette.requests import Request
-import asyncio
-from contextlib import asynccontextmanager
+import uvicorn
+import logging
 
-from event import on_panel_update
-from watcher import watcher_test_loop
+logger = logging.getLogger("DiscordWatcher.WebServer")
 
+# 1. Inicializace Socket.io serveru
+# cors_allowed_origins="*" zajistí, že se OBS připojí bez ohledu na doménu
+sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 
-clients: set[WebSocket] = set()
+# 2. Vytvoření FastAPI aplikace
+app = FastAPI()
 
-async def broadcast(panel: str, text: str):
-    # pošle všem websocket klientům
-    for ws in list(clients):
-        try:
-            await ws.send_json({"panel": panel, "text": text})
-        except asyncio.CancelledError:
-            raise  
-        except Exception:
-            clients.discard(ws)
+# 3. Propojení FastAPI a Socket.io do jedné ASGI aplikace
+combined_app = socketio.ASGIApp(sio, app)
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    print("Server startup – připojuji event listener")
-
-    def handle_panel_update(panel: str, text: str):
-        asyncio.create_task(broadcast(panel, text))
-
-    on_panel_update.connect(handle_panel_update)
-    watcher_task = asyncio.create_task(watcher_test_loop()) #vykreslování z watcheru do serveru
-
-    try:
-        yield
-    finally:
-        print("Server shutdown – odpojuji event listener")
-
-        on_panel_update.disconnect(handle_panel_update)
-
-        watcher_task.cancel()
-        try:
-            await watcher_task
-        except asyncio.CancelledError:
-            print("Watcher stopped cleanly")
-
-
-app = FastAPI(lifespan=lifespan)
-
+# Nastavení šablon a statických souborů
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 templates = Jinja2Templates(directory="web/templates")
 
-@app.get("/", response_class=HTMLResponse)
+# --- Trasy (Routes) ---
+
+@app.get("/")
 async def overlay(request: Request):
+    """Zobrazí hlavní display pro OBS."""
     return templates.TemplateResponse("display.html", {"request": request})
 
-@app.websocket("/ws")
-async def websocket_endpoint(ws: WebSocket):
-    await ws.accept()
-    clients.add(ws)
-    print("WS connected")
+# --- Socket.io Události ---
 
-    try:
-        # Tato smyčka jen udržuje websocket otevřený
-        while True:
-            await asyncio.sleep(60)
-    except WebSocketDisconnect:
-        print("WS disconnected")
-    except asyncio.CancelledError:
-        print("WS task cancelled")
-    finally:
-        clients.discard(ws)
+@sio.event
+async def connect(sid, environ):
+    logger.info(f"OBS připojen: {sid}")
 
+@sio.event
+async def disconnect(sid):
+    logger.info(f"OBS odpojen: {sid}")
 
+# --- Spouštěcí funkce ---
+
+async def start_web_server(host="0.0.0.0", port=8080):
+    """
+    Spustí Uvicorn server neblokujícím způsobem. 
+    Díky tomu může běžet ve stejném loopu jako Discord.
+    """
+    config = uvicorn.Config(
+        app=combined_app, 
+        host=host, 
+        port=port, 
+        log_level="info",
+        access_log=False
+    )
+    server = uvicorn.Server(config)
+    
+    logger.info(f"Web server startuje na http://{host}:{port}")
+    # await server.serve() je asynchronní a neblokuje, 
+    # pokud je spuštěn jako task v loopu
+    await server.serve()
