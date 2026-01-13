@@ -17,7 +17,9 @@ async def broadcast(panel: str, text: str):
     for ws in list(clients):
         try:
             await ws.send_json({"panel": panel, "text": text})
-        except:
+        except asyncio.CancelledError:
+            raise  
+        except Exception:
             clients.discard(ws)
 
 @asynccontextmanager
@@ -28,12 +30,20 @@ async def lifespan(app: FastAPI):
         asyncio.create_task(broadcast(panel, text))
 
     on_panel_update.connect(handle_panel_update)
-    asyncio.create_task(watcher_test_loop()) #vykreslování z watcheru do serveru
+    watcher_task = asyncio.create_task(watcher_test_loop()) #vykreslování z watcheru do serveru
 
-    yield  # ⬅️ server běží
+    try:
+        yield
+    finally:
+        print("Server shutdown – odpojuji event listener")
 
-    print("Server shutdown – odpojuji event listener")
-    on_panel_update.disconnect(handle_panel_update)
+        on_panel_update.disconnect(handle_panel_update)
+
+        watcher_task.cancel()
+        try:
+            await watcher_task
+        except asyncio.CancelledError:
+            print("Watcher stopped cleanly")
 
 
 app = FastAPI(lifespan=lifespan)
@@ -57,6 +67,8 @@ async def websocket_endpoint(ws: WebSocket):
             await asyncio.sleep(60)
     except WebSocketDisconnect:
         print("WS disconnected")
+    except asyncio.CancelledError:
+        print("WS task cancelled")
     finally:
         clients.discard(ws)
 

@@ -7,7 +7,7 @@ from threading import Lock
 class Event:
     @dataclass
     class Function:
-        function: Callable[..., None]
+        function: Callable[[Any], None]
         args: list[Any]
         kwargs: dict[str, Any]
 
@@ -15,7 +15,7 @@ class Event:
         self._functions: list[Event.Function] = []
         self._lock = Lock()
 
-    def connect(self, function: Callable[..., None], args: list[Any] | None = None, kwargs: dict[str, Any] | None = None,) -> None:
+    def connect(self, function: Callable[[Any], None], args: list[Any] | None = None, kwargs: dict[str, Any] | None = None,) -> None:
         if args is None:
             args = []
         if kwargs is None:
@@ -24,7 +24,7 @@ class Event:
         with self._lock:
             self._functions.append(Event.Function(function, args, kwargs))
 
-    def disconnect(self, function: Callable[..., None]) -> None:
+    def disconnect(self, function: Callable[[Any], None]) -> None:
         with self._lock:
             self._functions = [f for f in self._functions if f.function != function]
 
@@ -38,4 +38,6 @@ class Event:
 
 # globální event
 on_panel_update = Event()
+on_channel_event = Event()
+on_gui_command = Event()
                 
