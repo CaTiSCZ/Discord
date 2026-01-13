@@ -14,7 +14,9 @@ socket.on("new_message", (data) => {
   
   if (el) {
     // Formatter posílá pole řádků (data.lines), spojíme je do textu
-    el.textContent = data.lines.join("\n");
+    if (el) {
+        el.innerHTML = data.lines.join("\n");
+    }
   } else {
     console.warn("Element s ID " + panelId + " nebyl nalezen.");
   }

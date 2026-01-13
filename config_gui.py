@@ -15,8 +15,9 @@ from logger import Logging, CallbackHandler
 CONFIG_FILE = "config.json"
 
 DEFAULT_WATCHER = {
+    "enabled": True,
+    "comment": "",
     "channel_id": "",
-    
     "file_path": "output.txt",
     "last_id_file": "last_id.txt",
     "socket_panel": "panel-a",
@@ -200,6 +201,18 @@ class ConfigGUI:
         # ROW = logická řada, která se bude přepočítávat na grid
         # Každý "row" ve smyslu gridu se může skládat z více sloupců
         row = 0
+        # -- NULTÝ ŘÁDEK (NOVÝ): Enabled a Comment --
+        enabled_var = tk.BooleanVar(value=watcher.get("enabled", True))
+        tk.Checkbutton(lf, text="AKTIVNÍ", variable=enabled_var, font=("Arial", 9, "bold")).grid(row=row, column=0, sticky="w")
+        watcher["enabled_var"] = enabled_var
+
+        tk.Label(lf, text="Poznámka:").grid(row=row, column=1, sticky="e")
+        comment_entry = tk.Entry(lf, width=50)
+        comment_entry.insert(0, str(watcher.get("comment", "")))
+        comment_entry.grid(row=row, column=2, columnspan=3, sticky="w", padx=5)
+        watcher["comment_entry"] = comment_entry
+        
+        row += 1
 
         # -- První řádek: Channel ID, Output File, Last ID File
         tk.Label(lf, text="Channel ID:").grid(row=row, column=0, sticky="w")
@@ -311,6 +324,8 @@ class ConfigGUI:
                     try: return int(val)
                     except: return default
                 clean = {
+                    "enabled": w.get("enabled_var").get() if "enabled_var" in w else bool(w.get("enabled", True)),
+                    "comment": w.get("comment_entry").get() if "comment_entry" in w else str(w.get("comment", "")),
                     "channel_id": w.get("channel_id_entry").get() if "channel_id_entry" in w else w.get("channel_id", ""),
                     "file_path": w.get("file_path_entry").get() if "file_path_entry" in w else w.get("file_path", "output.txt"),
                     "last_id_file": w.get("last_id_file_entry").get() if "last_id_file_entry" in w else w.get("last_id_file", "last_id.txt"),
@@ -329,6 +344,8 @@ class ConfigGUI:
                 # Normalizace "None" řetězců na skutečné None
                 if clean["ignore_mode"] == "None": clean["ignore_mode"] = None
                 if clean["show_author_mode"] == "None": clean["show_author_mode"] = None
+                if clean["enabled"] == "true": clean["enabled"] = True
+                if clean["enabled"] == "false": clean["enabled"] = False
                 clean_watchers.append(clean)
             config=self.config.copy()
             config["watchers"] = clean_watchers
@@ -358,10 +375,17 @@ class ConfigGUI:
         kb.start()
 
         def target():
+            # Tady řekneme vláknu: Používej tento loop
+            asyncio.set_event_loop(loop)
             try:
                 main_client.run_client_with_loop(self.config, loop, keyboard_listener=kb)
             except Exception as e:
                 self.logger.error(f"Client launch failed: {e}")
+            finally:
+                # Loop zavřeme až TADY, až doběhne run_client_with_loop
+                if not loop.is_closed():
+                    loop.close()
+                self.logger.info("Loop closed in thread.")
 
         t = threading.Thread(target=target, daemon=True)
         t.start()

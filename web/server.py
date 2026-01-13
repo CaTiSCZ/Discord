@@ -1,3 +1,4 @@
+# web/server.py
 import socketio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles

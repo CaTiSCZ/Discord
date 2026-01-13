@@ -39,7 +39,7 @@ class MessageFormatter:
         self.header_text = header_text
         self.sio = sio
         self.channel_id = channel_id
-        self.loop = loop or asyncio.get_event_loop()
+        self.loop = loop 
         self.socket_panel = socket_panel
 
 
@@ -225,9 +225,10 @@ class MessageFormatter:
             event_name = 'new_message' if all_lines else 'clear_messages'
             payload = {'lines': all_lines, 'channel_id': self.socket_panel}
             try:
-                loop = self.loop
-                if loop.is_running():
-                    asyncio.run_coroutine_threadsafe(self.sio.emit(event_name, payload), loop)
+                asyncio.run_coroutine_threadsafe(
+                    self.sio.emit(event_name, payload), 
+                    self.loop
+                )
             except Exception as e:
                 logger.error(f"Failed to emit via socket: {e}")
         if txt_output:
@@ -296,10 +297,11 @@ class ChannelWatcher:
         txt_output: bool = False,
         header_text: str = "",
         sio = None,
+        loop: Optional[asyncio.AbstractEventLoop] = None,
     ):
         # parametry
         self.client = client
-        self.loop = asyncio.get_event_loop()
+        self.loop = loop or asyncio.get_event_loop()
         self.channel_id = channel_id
         self.socket_panel = socket_panel
         self.file_path = file_path
@@ -583,7 +585,7 @@ class ChannelWatcher:
             if added or edited:
                 # nové zprávy → aktualizuj cache a HTML
                 self.save_changes(added, edited, recent_msgs)
-                self.last_id = added[-1]["id"] if added else self.last_id
+                #self.last_id = added[-1]["id"] if added else self.last_id
                 return
             
             if self.manual_clear and not self.manual_delete_allowed and not self.file_empty:

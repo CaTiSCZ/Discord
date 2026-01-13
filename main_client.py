@@ -25,11 +25,17 @@ def load_config():
         return json.load(f)
 
 # -------------------------------------------------------------
-async def start_watchers(client, config, keyboard_listener: KeyboardListener = None):
+async def start_watchers(client, config, loop, keyboard_listener: KeyboardListener = None):
     watchers = []
     tasks = []
     for w in config["watchers"]:
+        comment = w.get("comment", "Bez popisu")
+        channel_id = w.get("channel_id", "Neznámé ID")
+        if not w.get("enabled", True):
+            logger.info(f"Skipping watcher: [{comment}] (ID: {channel_id})")
+            continue
         # Create a ChannelWatcher instance from config.json data
+        logger.info(f"Startuji watcher: [{comment}] pro kanál {channel_id}")
         watcher = ChannelWatcher(
             client=client,
             channel_id=int(w["channel_id"]),
@@ -38,8 +44,8 @@ async def start_watchers(client, config, keyboard_listener: KeyboardListener = N
             socket_panel=w.get("socket_panel", "panel-a"),
             interval=int(w["interval"]),
             history_limit=int(w["history_limit"]),
-            show_author_mode=None if w["show_author_mode"] == "None" else w["show_author_mode"],
-            ignore_mode=None if w["ignore_mode"] == "None" else w["ignore_mode"],
+            show_author_mode=w.get("show_author_mode"),
+            ignore_mode=w.get("ignore_mode"),
             manual_clear=bool(w["manual_clear"]),
             max_rows_per_column=int(w["max_rows_per_column"]),
             max_column_width=int(w["max_column_width"]),
@@ -47,6 +53,7 @@ async def start_watchers(client, config, keyboard_listener: KeyboardListener = N
             txt_output=bool(w["txt_output"]),
             header_text=w.get("header_text", "") or "",
             sio=sio,
+            loop=loop,
         )
         # pokud máme KeyboardListener, zaregistruj on_keypress callback
         if keyboard_listener:
@@ -55,7 +62,10 @@ async def start_watchers(client, config, keyboard_listener: KeyboardListener = N
         tasks.append(asyncio.create_task(watcher.run()))
 
     logger.debug(f"Starting {len(watchers)} watchers...")
-    await asyncio.gather(*tasks)
+    if tasks:
+        await asyncio.gather(*tasks)
+    else:
+        logger.warning("No enabled watchers.")
 
 
 # nová funkce: spustí klienta v předaném loopu a použije keyboard_listener
@@ -76,8 +86,7 @@ def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_liste
     async def on_ready():
         logger.info(f"Logged in as {client.user}")
         asyncio.create_task(start_web_server())
-        # spustit watchers v tomtéž loopu, předat keyboard_listener
-        await start_watchers(client, config, keyboard_listener)
+        await start_watchers(client, config, loop, keyboard_listener)
 
     try:
         loop.run_until_complete(client.start(TOKEN))
@@ -95,16 +104,17 @@ def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_liste
 
     finally:
         logger.info("Shutting down Discord client...")
-        loop.run_until_complete(client.close())
-        pending = asyncio.all_tasks(loop)
-        for task in pending:
-            task.cancel()
-        try:
-            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        except Exception:
-            pass
-        loop.close()
-        logger.info("Shutdown complete.")
+        # Musíme zkontrolovat, jestli loop ještě běží, než v něm něco spustíme
+        if loop.is_running() or not loop.is_closed():
+            try:
+                loop.run_until_complete(client.close())
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception as e:
+                logger.error(f"Error during cleanup: {e}")
+        logger.info("Client cleanup complete.")
 
 
 # -------------------------------------------------------------
