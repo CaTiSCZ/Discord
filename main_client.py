@@ -8,7 +8,7 @@ import logging
 import subprocess
 from channel_watcher import ChannelWatcher
 from keyboard_listener import KeyboardListener
-from web.server import app, sio, start_web_server
+from web.server import app, sio, start_web_server, stop_web_server
 
 logger = logging.getLogger("DiscordWatcher.MainClient")
 
@@ -59,13 +59,11 @@ async def start_watchers(client, config, loop, keyboard_listener: KeyboardListen
         if keyboard_listener:
             keyboard_listener.register_callback(watcher.on_keypress)
         watchers.append(watcher)
-        tasks.append(asyncio.create_task(watcher.run()))
+        tasks.append(loop.create_task(watcher.run()))
 
     logger.debug(f"Starting {len(watchers)} watchers...")
-    if tasks:
-        await asyncio.gather(*tasks)
-    else:
-        logger.warning("No enabled watchers.")
+    
+    return watchers, tasks
 
 
 # nová funkce: spustí klienta v předaném loopu a použije keyboard_listener
@@ -79,41 +77,47 @@ def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_liste
     intents.message_content = True
 
     client = discord.Client(intents=intents)
+    active_watchers = []
+    active_tasks = []
 
     asyncio.set_event_loop(loop)
 
     @client.event
     async def on_ready():
+        nonlocal active_watchers, active_tasks
         logger.info(f"Logged in as {client.user}")
-        asyncio.create_task(start_web_server())
-        await start_watchers(client, config, loop, keyboard_listener)
+        loop.create_task(start_web_server())
+        watchers, tasks = await start_watchers(client, config, loop, keyboard_listener)
+        active_watchers.extend(watchers)
+        active_tasks.extend(tasks)
 
     try:
         loop.run_until_complete(client.start(TOKEN))
         logger.info("Client has stopped.")
-
-    except KeyboardInterrupt:
-        logger.info("Interrupt – stopping client...")
-        for task in asyncio.all_tasks(loop):
-            task.cancel()
-        loop.run_until_complete(asyncio.gather(*asyncio.all_tasks(loop), return_exceptions=True))
-
-    except RuntimeError as e:
-        if "Event loop stopped" not in str(e):
-            raise
+    except Exception as e:
+        logger.error(f"Client run error: {e}")    
 
     finally:
         logger.info("Shutting down Discord client...")
+        stop_web_server()
         # Musíme zkontrolovat, jestli loop ještě běží, než v něm něco spustíme
-        if loop.is_running() or not loop.is_closed():
+        if not client.is_closed():
             try:
                 loop.run_until_complete(client.close())
-                pending = asyncio.all_tasks(loop)
-                for task in pending:
-                    task.cancel()
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
             except Exception as e:
-                logger.error(f"Error during cleanup: {e}")
+                logger.error(f"Error closing client: {e}")
+
+        try:
+            pending = asyncio.all_tasks(loop)
+            for task in pending:
+                task.cancel()
+            
+            if pending:
+                # Dáme taskům chvilku na ukončení (gather)
+                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+        except Exception as e:
+            logger.error(f"Error cancelling tasks: {e}")
+            
         logger.info("Client cleanup complete.")
 
 

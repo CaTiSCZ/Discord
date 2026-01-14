@@ -229,6 +229,7 @@ class MessageFormatter:
                     self.sio.emit(event_name, payload), 
                     self.loop
                 )
+                logger.debug(f"Emitted via socket: {event_name} to {self.socket_panel}")
             except Exception as e:
                 logger.error(f"Failed to emit via socket: {e}")
         if txt_output:

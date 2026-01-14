@@ -9,6 +9,7 @@ import logging
 
 logger = logging.getLogger("DiscordWatcher.WebServer")
 
+
 # 1. Inicializace Socket.io serveru
 # cors_allowed_origins="*" zajistí, že se OBS připojí bez ohledu na doménu
 sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
@@ -18,6 +19,8 @@ app = FastAPI()
 
 # 3. Propojení FastAPI a Socket.io do jedné ASGI aplikace
 combined_app = socketio.ASGIApp(sio, app)
+
+server_instance = None
 
 # Nastavení šablon a statických souborů
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
@@ -47,16 +50,20 @@ async def start_web_server(host="0.0.0.0", port=8080):
     Spustí Uvicorn server neblokujícím způsobem. 
     Díky tomu může běžet ve stejném loopu jako Discord.
     """
+    global server_instance
     config = uvicorn.Config(
         app=combined_app, 
         host=host, 
         port=port, 
         log_level="info",
-        access_log=False
+        access_log=False,
     )
-    server = uvicorn.Server(config)
-    
-    logger.info(f"Web server startuje na http://{host}:{port}")
-    # await server.serve() je asynchronní a neblokuje, 
-    # pokud je spuštěn jako task v loopu
-    await server.serve()
+    server_instance = uvicorn.Server(config)
+    await server_instance.serve()  
+    logger.info(f"Web server starting: http://{host}:{port}")
+
+def stop_web_server():
+    global server_instance
+    if server_instance:
+        server_instance.should_exit = True
+        print("Web server shutdown requested...")
