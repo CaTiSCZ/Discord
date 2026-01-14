@@ -11,6 +11,7 @@ import logging
 from keyboard_listener import KeyboardListener
 import main_client
 from logger import Logging, CallbackHandler
+from web.server import start_web_server, stop_web_server
 
 CONFIG_FILE = "config.json"
 
@@ -400,6 +401,7 @@ class ConfigGUI:
         """Ukončí pouze běžícího bota (spuštěného přes Run Bot) a jeho keyboard listener.
         GUI zůstane otevřené.
         """
+        stop_web_server()
         # nic dělat, pokud není co zastavovat
         if not getattr(self, "_kb", None) and not getattr(self, "_bot_thread", None):
             self.bot_running = False

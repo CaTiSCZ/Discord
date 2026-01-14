@@ -51,6 +51,9 @@ async def start_web_server(host="0.0.0.0", port=8080):
     Díky tomu může běžet ve stejném loopu jako Discord.
     """
     global server_instance
+    if server_instance and not server_instance.should_exit:
+        logger.info("Web server už je aktivní na pozadí.")
+        return
     config = uvicorn.Config(
         app=combined_app, 
         host=host, 
@@ -59,11 +62,15 @@ async def start_web_server(host="0.0.0.0", port=8080):
         access_log=False,
     )
     server_instance = uvicorn.Server(config)
-    await server_instance.serve()  
-    logger.info(f"Web server starting: http://{host}:{port}")
+    try:
+        logger.info(f"Web server starting: http://{host}:{port}")
+        await server_instance.serve()
+    finally:
+        server_instance = None 
+    
 
 def stop_web_server():
     global server_instance
     if server_instance:
         server_instance.should_exit = True
-        print("Web server shutdown requested...")
+        logger.info("Web server shutdown requested...")

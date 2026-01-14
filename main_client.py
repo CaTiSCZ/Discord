@@ -101,24 +101,22 @@ def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_liste
         logger.info("Shutting down Discord client...")
         stop_web_server()
         # Musíme zkontrolovat, jestli loop ještě běží, než v něm něco spustíme
-        if not client.is_closed():
+        if not client.is_closed() or not loop.is_closed():
             try:
                 loop.run_until_complete(client.close())
-            except Exception as e:
-                logger.error(f"Error closing client: {e}")
+                loop.run_until_complete(asyncio.sleep(0.5))
+            
 
-        try:
-            pending = asyncio.all_tasks(loop)
-            for task in pending:
-                task.cancel()
-            
-            if pending:
-                # Dáme taskům chvilku na ukončení (gather)
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        except Exception as e:
-            logger.error(f"Error cancelling tasks: {e}")
-            
-        logger.info("Client cleanup complete.")
+        
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            except Exception as e:
+                    logger.error(f"Error during cleanup: {e}")
+
+        logger.info("Cleanup complete, server stopped.")
 
 
 # -------------------------------------------------------------
