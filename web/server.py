@@ -77,12 +77,11 @@ async def start_web_server(host="0.0.0.0", port=8080):
         server_instance = None 
     
 
-async def stop_web_server():
+def stop_web_server():
     global server_instance
     if server_instance:
         logger.info("Vypínám Web Server...")
         server_instance.should_exit = True
-        # Malá pauza, aby uvicorn stihl zareagovat a uvolnit port
-        await asyncio.sleep(0.5)
+        
         server_instance = None
         logger.info("Web Server byl úspěšně ukončen.")
