@@ -7,8 +7,9 @@ import logging
 from typing import List, Dict, Optional
 import sys
 import event
+from logger import setup_logger
 
-logger = logging.getLogger("DiscordWatcher.ChannelWatcher")
+logger = setup_logger("ChannelWatcher", level=logging.DEBUG)
 
 # -----------------------------------------------------------------------------
 # MessageFormatter
@@ -315,6 +316,7 @@ class ChannelWatcher:
         self.txt_output = txt_output
         self.header_text = header_text
         self.sio = sio
+        self.channel = None
 
         # formatter instance (řeší celý rendering & parsing)
         self.formatter = MessageFormatter(
@@ -575,9 +577,9 @@ class ChannelWatcher:
         return lines
 
     # ----------------- hlavní cyklus (jeden běh) -----------------
-    async def run_cycle(self, channel: discord.TextChannel):
+    async def run_cycle(self):
         try:
-            recent_msgs = await self.fetch_recent(channel)
+            recent_msgs = await self.fetch_recent(self.channel)
             result = await self.find_new_and_updates(recent_msgs)
             added = result["added"]
             edited = result["edited"]
@@ -591,7 +593,7 @@ class ChannelWatcher:
             
             if self.manual_clear and not self.manual_delete_allowed and not self.file_empty:
                 self.manual_delete_allowed = True
-                logger.info(f"Manual clear {self.file_path} allowed.")
+                logger.info(f"Manual clear for #{self.channel.name} allowed.")
 
             if not self.manual_clear:
                 # žádné nové zprávy → vyčisti HTML jen jednou
@@ -615,20 +617,23 @@ class ChannelWatcher:
             self.file_empty = True
             self.formatter.save_html([], self.file_path, self.txt_output)
             self.manual_delete_allowed = False
+        elif key == "d" and self.manual_clear and not self.manual_delete_allowed:
+            logger.warning(f"Manual clear for #{self.channel.name} not allowed yet.")
+        
 
     # ----------------- hlavní smyčka -----------------
     async def run(self):
         """Hlavní smyčka, která spouští cykly."""
-        channel = self.client.get_channel(self.channel_id)
-        if not channel:
+        self.channel = self.client.get_channel(self.channel_id)
+        if not self.channel:
             logger.error(f"Channel {self.channel_id} not responding (get_channel returned None).")
             return
-        logger.info(f"Watch channel: {channel.name}")
+        logger.info(f"Watch target: {self.channel.guild.name} > #{self.channel.name}")
         self.load_last_ids()
         if self.txt_output:
             self.file_path = self.file_path.replace(".html", ".txt")
         while self.running:
-            await self.run_cycle(channel)
+            await self.run_cycle()
             await asyncio.sleep(self.interval)
         
 

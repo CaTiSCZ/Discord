@@ -4,7 +4,7 @@ from queue import Queue
 from threading import Lock
 from contextlib import AbstractContextManager
 
-DEFAULT_LOG_FORMAT = "%(asctime)s\t%(levelname)-8s\t%(threadName)-24s\t%(name)-10s\t%(message)s"
+DEFAULT_LOG_FORMAT = "%(asctime)s\t%(name)-20s\t%(levelname)-8s\t%(threadName)-24s\t%(message)s"
 
 TCP_HANDLER_DEFAULT_HOST_IP = "localhost"
 TCP_HANDLER_DEFAULT_HOST_PORT = 12344
@@ -60,9 +60,12 @@ class Logging(AbstractContextManager):
         logging.getLogger("discord").setLevel(logging.CRITICAL)
         logging.getLogger("discord.http").setLevel(logging.CRITICAL)
         logging.getLogger("discord.gateway").setLevel(logging.CRITICAL)
+
+        logging.getLogger("asyncio").setLevel(logging.WARNING)
+        logging.getLogger("uvicorn").setLevel(logging.WARNING)
         
         self.logger = logging.getLogger(application_logger)
-        self.logger.setLevel(logging.INFO) # nastavení úrovně vypisování hlášek - global
+        self.logger.setLevel(logging.DEBUG) # nastavení úrovně vypisování hlášek - global
         self.logger_queue = Queue(-1)
         self.logger_queue_handler = logging.handlers.QueueHandler(self.logger_queue)
         self.logger.addHandler(self.logger_queue_handler)
@@ -117,3 +120,25 @@ class Logging(AbstractContextManager):
         self.log_printer.stop()
         if self.log_tcp_handler is not None:
             self.log_tcp_handler.close()
+def setup_logger(name=None, level=None):
+    """
+    Vrátí logger napojený na hlavní frontu (Logging).
+    level: např. logging.DEBUG, logging.INFO atd.
+    """
+    global logger
+    
+    # Pokud hlavní Logging ještě neběží, vrátíme základní logger
+    if logger is None:
+        l = logging.getLogger(name)
+        if level:
+            l.setLevel(level)
+        return l
+    
+    # Získání (nebo vytvoření) loggeru podle jména
+    l = logging.getLogger(name)
+    
+    # Pokud byla předána úroveň, nastavíme ji pro tento konkrétní logger
+    if level:
+        l.setLevel(level)
+        
+    return l

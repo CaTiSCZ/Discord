@@ -9,8 +9,9 @@ import subprocess
 from channel_watcher import ChannelWatcher
 from keyboard_listener import KeyboardListener
 from web.server import app, sio, start_web_server, stop_web_server
+from logger import setup_logger
 
-logger = logging.getLogger("DiscordWatcher.MainClient")
+logger = setup_logger("MainClient", level=logging.DEBUG)
 
 CONFIG_FILE = "config.json"
 
@@ -32,7 +33,7 @@ async def start_watchers(client, config, loop, keyboard_listener: KeyboardListen
         comment = w.get("comment", "Bez popisu")
         channel_id = w.get("channel_id", "Neznámé ID")
         if not w.get("enabled", True):
-            logger.info(f"Skipping watcher: [{comment}] (ID: {channel_id})")
+            logger.debug(f"Skipping watcher: [{comment}] (ID: {channel_id})")
             continue
         # Create a ChannelWatcher instance from config.json data
         logger.info(f"Startuji watcher: [{comment}] pro kanál {channel_id}")
@@ -85,7 +86,7 @@ def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_liste
     @client.event
     async def on_ready():
         nonlocal active_watchers, active_tasks
-        logger.info(f"Logged in as {client.user}")
+        logger.debug(f"Logged in as {client.user}")
         loop.create_task(start_web_server())
         watchers, tasks = await start_watchers(client, config, loop, keyboard_listener)
         active_watchers.extend(watchers)

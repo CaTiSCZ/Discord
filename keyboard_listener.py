@@ -5,8 +5,9 @@ import msvcrt
 import time
 import queue
 import logging
+from logger import setup_logger
 
-logger = logging.getLogger("DiscordWatcher.KeyboardListener")
+logger = setup_logger("KeyboardListener", level=logging.DEBUG)
 
 class KeyboardListener(threading.Thread):
     def __init__(self, loop: asyncio.AbstractEventLoop):

@@ -1,4 +1,5 @@
 # web/server.py
+import asyncio
 import socketio
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
@@ -6,8 +7,15 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 import uvicorn
 import logging
+import sys
+import os
 
-logger = logging.getLogger("DiscordWatcher.WebServer")
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from logger import setup_logger
+logger = setup_logger("WebServer", level=logging.INFO)
+
+
 
 
 # 1. Inicializace Socket.io serveru
@@ -69,8 +77,12 @@ async def start_web_server(host="0.0.0.0", port=8080):
         server_instance = None 
     
 
-def stop_web_server():
+async def stop_web_server():
     global server_instance
     if server_instance:
+        logger.info("Vypínám Web Server...")
         server_instance.should_exit = True
-        logger.info("Web server shutdown requested...")
+        # Malá pauza, aby uvicorn stihl zareagovat a uvolnit port
+        await asyncio.sleep(0.5)
+        server_instance = None
+        logger.info("Web Server byl úspěšně ukončen.")

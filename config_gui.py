@@ -10,8 +10,9 @@ import asyncio
 import logging
 from keyboard_listener import KeyboardListener
 import main_client
-from logger import Logging, CallbackHandler
+from logger import Logging, CallbackHandler, setup_logger
 from web.server import start_web_server, stop_web_server
+
 
 CONFIG_FILE = "config.json"
 
@@ -57,12 +58,12 @@ def set_labelframe_state(labelframe, enable=False):
 class ConfigGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Discord Watcher Config")
+        self.root.title("GUI Configuration for Discord Watcher")
         self.root.geometry("1400x700")
 
         # Inicializuj logger s GUI callbackem
         self.logging_ctx = Logging()
-        self.logger = logging.getLogger("DiscordWatcher")
+        self.logger = setup_logger("GUI", level=logging.DEBUG)
         
         self.config = self.load_config()
         self.bot_running = False
@@ -129,8 +130,8 @@ class ConfigGUI:
         log_scrollbar.pack(side="right", fill="y")
 
         # Přidej CallbackHandler pro zápis do log panelu
-        gui_handler = CallbackHandler(sink_text=self._log_to_text_widget, level=logging.DEBUG)
-        gui_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"))
+        gui_handler = CallbackHandler(sink_text=self._log_to_text_widget, level=logging.WARNING)
+        gui_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"))
         self.logging_ctx.log_printer.add_handler(gui_handler)
 
         # zavěsit handler pro kliknutí na křížek okna
@@ -140,7 +141,7 @@ class ConfigGUI:
         self.root.bind('<d>', lambda e: self.on_key_press('d'))
         self.root.bind('<q>', lambda e: self.on_key_press('q'))
 
-        #self.logger.info("GUI initialized.")
+        self.logger.debug("GUI initialized.")
         self.render_watchers()
 
     # ----------------------------------------------------------------
@@ -367,7 +368,7 @@ class ConfigGUI:
             # Zamknout vstupy
             if "frame" in w: set_labelframe_state(w["frame"], enable=False)
         self.bot_running = True
-        self.logger.info("Discord bot launched. Inputs locked.")
+        self.logger.debug("Discord bot launched. Inputs locked.")
 
         # vytvořit nový loop a keyboard listener, spustit je v pozadí
         here = os.path.dirname(os.path.abspath(__file__))
@@ -383,10 +384,16 @@ class ConfigGUI:
             except Exception as e:
                 self.logger.error(f"Client launch failed: {e}")
             finally:
-                # Loop zavřeme až TADY, až doběhne run_client_with_loop
-                if not loop.is_closed():
+                try:
+                    self.logger.info("Loop closed in thread.")
+                    # Pokud loop ještě běží, zkusíme ho zastavit
+                    if loop.is_running():
+                        loop.call_soon_threadsafe(loop.stop)
+                    # Počkáme sekundu, než ho zavřeme úplně
                     loop.close()
-                self.logger.info("Loop closed in thread.")
+                    
+                except Exception as e:
+                    self.logger.debug(f"Error closing loop: {e}")
 
         t = threading.Thread(target=target, daemon=True)
         t.start()
@@ -407,7 +414,7 @@ class ConfigGUI:
             self.bot_running = False
             return
 
-        self.logger.info("Stoping bot...")
+        self.logger.debug("Stoping bot...")
         # Pošleme 'q' do listeneru (pokud existuje) -> listener zavolá loop.stop()
         try:
             if getattr(self, "_kb", None):
@@ -425,7 +432,7 @@ class ConfigGUI:
                 except Exception:
                     pass
         except Exception as e:
-            print(f"❌ Listener stopping failed: {e}")
+            self.logger.error(f"❌ Listener stopping failed: {e}")
 
         # počkat krátce na ukončení bot-threadu
         try:
@@ -435,7 +442,7 @@ class ConfigGUI:
                 except Exception:
                     pass
         except Exception as e:
-            print(f"❌ Wating on bot thread: {e}")
+            self.logger.error(f"❌ Wating on bot thread: {e}")
 
         # uklidit reference a stav
         self._kb = None
@@ -482,7 +489,6 @@ class ConfigGUI:
         # pokud běží bot a máme listener, pouze ho zastav a NEZAVÍREJ GUI
         if self.bot_running and getattr(self, "_kb", None):
             self.stop_bot()
-            self.logger.info("Bot stopped")
             return
         else:
             self.logger.info("Bot isn't running.")
