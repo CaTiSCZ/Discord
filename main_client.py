@@ -3,157 +3,148 @@ import discord
 import asyncio
 import json
 import os
-import sys
+
 import logging
-import subprocess
+
 from channel_watcher import ChannelWatcher
 from keyboard_listener import KeyboardListener
-from web.server import app, sio, start_web_server, stop_web_server
+from web.server import sio, start_web_server, stop_web_server
 from logger import setup_logger
 
-logger = setup_logger("MainClient", level=logging.DEBUG)
-
+logger = setup_logger("Engine", level=logging.DEBUG)
 CONFIG_FILE = "config.json"
 
+class DiscordEngine:
+    def __init__(self, config=None):
+        # Pokud config nepředáme (např. při startu bez GUI), načteme ho ze souboru
+        self.config = config or self.load_config()
+        self.loop = None
+        self.client = None
+        self.kb_listener = None
+        self.is_running = False
 
-# -------------------------------------------------------------
-def load_config():
-    """Load configuration from config.json."""
-    if not os.path.exists(CONFIG_FILE):
-        raise FileNotFoundError(f"{CONFIG_FILE} not found. Run config_gui.py first.")
+    def load_config(self):
+        """Načtení konfigurace uložené z GUI."""
+        if not os.path.exists(CONFIG_FILE):
+            logger.error(f"{CONFIG_FILE} not found.")
+            return {"watchers": []}
+        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
 
-    with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-        return json.load(f)
+    async def _start_watchers(self):
+        """Inicializace watcherů a registrace jejich callbacků pro klávesnici."""
+        if not self.config.get("watchers"):
+            logger.warning("No watchers in config.")
+            return
 
-# -------------------------------------------------------------
-async def start_watchers(client, config, loop, keyboard_listener: KeyboardListener = None):
-    watchers = []
-    tasks = []
-    for w in config["watchers"]:
-        comment = w.get("comment", "Bez popisu")
-        channel_id = w.get("channel_id", "Neznámé ID")
-        if not w.get("enabled", True):
-            logger.debug(f"Skipping watcher: [{comment}] (ID: {channel_id})")
-            continue
-        # Create a ChannelWatcher instance from config.json data
-        logger.info(f"Startuji watcher: [{comment}] pro kanál {channel_id}")
-        watcher = ChannelWatcher(
-            client=client,
-            channel_id=int(w["channel_id"]),
-            file_path=w["file_path"],
-            last_id_file=w["last_id_file"],
-            socket_panel=w.get("socket_panel", "panel-a"),
-            interval=int(w["interval"]),
-            history_limit=int(w["history_limit"]),
-            show_author_mode=w.get("show_author_mode"),
-            ignore_mode=w.get("ignore_mode"),
-            manual_clear=bool(w["manual_clear"]),
-            max_rows_per_column=int(w["max_rows_per_column"]),
-            max_column_width=int(w["max_column_width"]),
-            column_spacing=int(w.get("column_spacing", 2)),
-            txt_output=bool(w["txt_output"]),
-            header_text=w.get("header_text", "") or "",
-            sio=sio,
-            loop=loop,
-        )
-        # pokud máme KeyboardListener, zaregistruj on_keypress callback
-        if keyboard_listener:
-            keyboard_listener.register_callback(watcher.on_keypress)
-        watchers.append(watcher)
-        tasks.append(loop.create_task(watcher.run()))
-
-    logger.debug(f"Starting {len(watchers)} watchers...")
-    
-    return watchers, tasks
-
-
-# nová funkce: spustí klienta v předaném loopu a použije keyboard_listener
-def run_client_with_loop(config, loop: asyncio.AbstractEventLoop, keyboard_listener: KeyboardListener = None):
-    # TODO: zkontrolovat, jestli jsme opravou gui.save_config nerozbili config, který se používá tady
-    TOKEN = config.get("TOKEN", "").strip()
-    if not TOKEN:
-        raise RuntimeError("TOKEN not defined in config.json (use config_gui.py to set it).")
-
-    intents = discord.Intents.default()
-    intents.message_content = True
-
-    client = discord.Client(intents=intents)
-    active_watchers = []
-    active_tasks = []
-
-    asyncio.set_event_loop(loop)
-
-    @client.event
-    async def on_ready():
-        nonlocal active_watchers, active_tasks
-        logger.debug(f"Logged in as {client.user}")
-        loop.create_task(start_web_server())
-        watchers, tasks = await start_watchers(client, config, loop, keyboard_listener)
-        active_watchers.extend(watchers)
-        active_tasks.extend(tasks)
-
-    try:
-        loop.run_until_complete(client.start(TOKEN))
-        logger.info("Client has stopped.")
-    except Exception as e:
-        logger.error(f"Client run error: {e}")    
-
-    finally:
-        logger.info("Shutting down Discord client...")
-        stop_web_server()
-        # Musíme zkontrolovat, jestli loop ještě běží, než v něm něco spustíme
-        if not client.is_closed() or not loop.is_closed():
-            try:
-                loop.run_until_complete(client.close())
-                loop.run_until_complete(asyncio.sleep(0.5))
+        for w in self.config["watchers"]:
+            comment = w.get("comment", "No description")
+            channel_id = w.get("channel_id")
+            if not w.get("enabled", True):
+                logger.debug(f"Skipping watcher: [{comment}] (ID: {channel_id})")
+                continue
             
+            logger.info(f"Start watcher: [{comment}] (ID: {channel_id})")
+            
+            # Vytvoření instance watcheru
+            watcher = ChannelWatcher(
+                client=self.client,
+                channel_id=int(w.get("channel_id", 0)),
+                file_path=str(w.get("file_path", "output.txt")),
+                last_id_file=str(w.get("last_id_file", "last_id.txt")),
+                socket_panel=str(w.get("socket_panel", "panel-a")),
+                interval=int(w.get("interval", 10)),
+                history_limit=int(w.get("history_limit", 10)),
+                show_author_mode=str(w.get("show_author_mode", "both")),
+                ignore_mode=w.get("ignore_mode"),
+                manual_clear=bool(w["manual_clear"]),
+                max_rows_per_column=int(w.get("max_rows_per_column", 9)),
+                max_column_width=int(w.get("max_column_width", 40)),
+                column_spacing=int(w.get("column_spacing", 2)),
+                txt_output=bool(w.get("txt_output", True)),
+                header_text=str(w.get("header_text", "")),
+                loop=self.loop,
+                sio=sio,
+            )
+            logger.debug(f"Watcher created: [{comment}] (ID: {watcher.channel_id}) \n\tpanel: {watcher.socket_panel}, file: {watcher.file_path}\n\tClient: {self.client} ({watcher.client})")
+            # REGISTRACE CALLBACKU (Důležité!)
+            # Když se na klávesnici zmáčkne klávesa, watcher dostane šanci reagovat
+            if self.kb_listener:
+                self.kb_listener.register_callback(watcher.on_keypress)
 
+            # Spuštění watcheru jako asynchronní task
+            self.loop.create_task(watcher.run())
+
+    async def run_async(self):
+        """Hlavní asynchronní workflow."""
+        TOKEN = self.config.get("TOKEN", "").strip()
+        if not TOKEN:
+            logger.error("TOKEN not defined in config.json.")
+            raise RuntimeError("TOKEN not defined in config.json (use config_gui.py to set it).")
         
-                pending = asyncio.all_tasks(loop)
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-            except Exception as e:
-                    logger.error(f"Error during cleanup: {e}")
-
-        logger.info("Cleanup complete, server stopped.")
-
-
-# -------------------------------------------------------------
-# ... (předchozí kód: importy, Formatter, Watcher) ...
-
-def main():
-    config = load_config()
-    if not config.get("watchers"):
-        logger.error("No watchers defined in config.json.")
-        return
-
-    # 1. Inicializace KeyboardListeneru (pokud ho chceš používat)
-    kb_listener = KeyboardListener()
-    kb_listener.start() # Běží ve vlastním vlákně (v pořádku)
-
-    # 2. Vytvoření loopu pro celou aplikaci
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    try:
-        # 3. Spuštění všeho skrze run_client_with_loop
-        run_client_with_loop(config, loop, keyboard_listener=kb_listener)
-    except Exception as e:
-        logger.error(f"Client launch failed: {e}")
-    finally:
-        # 4. Úklid po vypnutí
-        if kb_listener:
-            kb_listener.stop() 
-
-if __name__ == "__main__":
-    # Pokud existuje config_gui, spustíme ho, jinak hned main
-    script_path = os.path.join(os.path.dirname(__file__), "config_gui.py")
-    if os.path.exists(script_path):
+        self.is_running = True
         try:
-            subprocess.run([sys.executable, script_path])
+            self.client = discord.Client(intents=discord.Intents.all())
+            logger.debug("Discord Client initialized.")
         except Exception as e:
-            main()
-    else:
-        main()
+            logger.error(f"Discord Client init error: {e}")
+            raise e
+        
+        @self.client.event
+        async def on_ready():
+            logger.debug(f"Bot is logged in as {self.client.user}")
+            # Teprve teď, když je bot READY, spustíme watchery
+            await self._start_watchers()
+            logger.debug("Watchers started after bot login.")
+        
+        try:
+            self.loop.create_task(start_web_server())
+            await self.client.start(TOKEN)
+            
+        except Exception as e:
+            logger.error(f"Error of Engine: {e}")
+        finally:
+            await self.shutdown_async()
+
+    async def shutdown_async(self):
+        """Čisté ukončení asynchronních součástí."""
+        logger.info("Engine: Shutting down...")
+        
+        if self.client and not self.client.is_closed():
+            await self.client.close()
+        
+        await stop_web_server()
+        
+        # Zrušení všech visících tasků
+        tasks = [t for t in asyncio.all_tasks(self.loop) if t is not asyncio.current_task()]
+        for t in tasks: t.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+            
+        self.is_running = False
+        logger.info("Engine: All process stopped.")
+        self.loop.stop()
+
+    def start(self, loop):
+        """Vstupní bod pro thread (z GUI nebo Mainu)."""
+        self.loop = loop
+        asyncio.set_event_loop(self.loop)
+        
+        # Inicializace klávesnice
+        self.kb_listener = KeyboardListener(self.loop)
+        self.kb_listener.start()
+        
+        # Spuštění asynchronního světa
+        try:
+            self.loop.run_until_complete(self.run_async())
+        except Exception as e:
+            logger.error(f"Loop error: {e}")
+
+    def stop(self):
+        """Signál k ukončení vyslaný z jiného vlákna (GUI)."""
+        if self.kb_listener:
+            self.kb_listener.stop()
+        
+        if self.loop and self.loop.is_running():
+            asyncio.run_coroutine_threadsafe(self.shutdown_async(), self.loop)
+

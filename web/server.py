@@ -45,11 +45,25 @@ async def overlay(request: Request):
 
 @sio.event
 async def connect(sid, environ):
-    logger.info(f"OBS připojen: {sid}")
+    ip = environ.get('REMOTE_ADDR', 'Unknown IP')
+    user_agent = environ.get('HTTP_USER_AGENT', 'Unknown device')
+    
+    client_name = "Unknown client"
+    if "OBS" in user_agent:
+        client_name = "OBS Studio"
+    elif "Chrome" in user_agent or "Mozilla" in user_agent:
+        client_name = "Internet Browser"
+    else:
+        client_name = user_agent.split("/")[0]  # Zkusíme získat název klienta z User-Agent
+
+    # Teď bude log vypadat mnohem lépe
+    logger.info(f"Connection opened: {client_name} (IP: {ip})")
+    logger.debug(f"Technical SID: {sid}")
 
 @sio.event
 async def disconnect(sid):
-    logger.info(f"OBS odpojen: {sid}")
+    logger.info(f"Connection closed")
+    logger.debug(f"Disconnected: {sid}")
 
 # --- Spouštěcí funkce ---
 
@@ -60,7 +74,7 @@ async def start_web_server(host="0.0.0.0", port=8080):
     """
     global server_instance
     if server_instance and not server_instance.should_exit:
-        logger.info("Web server už je aktivní na pozadí.")
+        logger.info("Server is already running.")
         return
     config = uvicorn.Config(
         app=combined_app, 
@@ -80,8 +94,8 @@ async def start_web_server(host="0.0.0.0", port=8080):
 def stop_web_server():
     global server_instance
     if server_instance:
-        logger.info("Vypínám Web Server...")
+        logger.info("Shutting down Web Server...")
         server_instance.should_exit = True
         
         server_instance = None
-        logger.info("Web Server byl úspěšně ukončen.")
+        logger.info("Web Server was successfully shut down.")

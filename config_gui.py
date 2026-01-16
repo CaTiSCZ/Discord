@@ -4,14 +4,14 @@ from tkinter import ttk, messagebox
 import json
 import os
 import sys
-import subprocess
+#import subprocess
 import threading
 import asyncio
 import logging
-from keyboard_listener import KeyboardListener
+#from keyboard_listener import KeyboardListener
 import main_client
 from logger import Logging, CallbackHandler, setup_logger
-from web.server import start_web_server, stop_web_server
+#from web.server import start_web_server, stop_web_server
 
 
 CONFIG_FILE = "config.json"
@@ -58,16 +58,32 @@ def set_labelframe_state(labelframe, enable=False):
 class ConfigGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("GUI Configuration for Discord Watcher")
-        self.root.geometry("1400x700")
+        self.root.title("Discord Bot Control Panel")
+
+        self.gui_size()
+        
 
         # Inicializuj logger s GUI callbackem
         self.logging_ctx = Logging()
         self.logger = setup_logger("GUI", level=logging.DEBUG)
-        
+
+        # Přidej CallbackHandler pro zápis do log panelu
+        self.gui_handler = CallbackHandler(sink_text=self.append_log, level=logging.DEBUG)
+        self.gui_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"))
+        logging.getLogger().addHandler(self.gui_handler)
+
+        self.engine = None
+        self.bot_thread = None
+        self.bot_running = False
+        self.loop = None
         self.config = self.load_config()
         self.bot_running = False
+        
+        self.setup_UI()
+        
+        
 
+        """
         # TOKEN INPUT (na jednom řádku vedle sebe)
         token_frame = tk.Frame(root)
         token_frame.pack(anchor="w", padx=10, pady=5)
@@ -128,40 +144,110 @@ class ConfigGUI:
 
         self.log_text.pack(side="left", fill="both", expand=True)
         log_scrollbar.pack(side="right", fill="y")
+        """
 
-        # Přidej CallbackHandler pro zápis do log panelu
-        gui_handler = CallbackHandler(sink_text=self._log_to_text_widget, level=logging.WARNING)
-        gui_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"))
-        self.logging_ctx.log_printer.add_handler(gui_handler)
+        
 
         # zavěsit handler pro kliknutí na křížek okna
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         
         # Přidat key bindings pro 'd' a 'q' (když je GUI aktivní okno)
-        self.root.bind('<d>', lambda e: self.on_key_press('d'))
-        self.root.bind('<q>', lambda e: self.on_key_press('q'))
+        self.root.bind('<Key>', self.on_key_press)
+        #self.root.bind('<q>', lambda e: self.on_key_press('q'))
 
         self.logger.debug("GUI initialized.")
         self.render_watchers()
 
-    # ----------------------------------------------------------------
-    def on_key_press(self, key: str):
-        """Handler pro stisk klávesy v GUI okně."""
-        if key == 'd':
-            self.delete_files()
-        elif key == 'q':
-            self.quit_bot()
+    def setup_UI(self):
+        # TOKEN INPUT (na jednom řádku vedle sebe)
+        token_frame = tk.Frame(root)
+        token_frame.pack(anchor="w", padx=10, pady=5)
+        
+        tk.Label(token_frame, text="Discord BOT TOKEN:", font=("Arial", 12, "bold")).pack(side="left", padx=(0, 10))
+        self.token_entry = tk.Entry(token_frame, width=80)
+        self.token_entry.pack(side="left", fill="x", expand=True)
+        self.token_entry.insert(0, self.config.get("TOKEN", ""))
+
+        # BUTTONS (pod tokenem)
+        btn_frame = tk.Frame(root)
+        btn_frame.pack(pady=5)
+        tk.Button(btn_frame, text="Add Watcher", command=self.add_watcher).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Save Configuration", command=self.save_config).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Run Bot", command=self.run_bot).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Delete Files (d)", command=self.delete_files).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Quit Bot (q)", command=self.quit_bot).pack(side="left", padx=5)
+        #tk.Button(btn_frame, text="GUI size", command=self.gui_size).pack(side="left", padx=5)
+
+        # Hlavní kontejner
+        self.main_frame = ttk.Frame(self.root, padding="10")
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Váhy sloupců: Levý (0) se roztahuje, Pravý (1) je fixní podle obsahu
+        self.main_frame.columnconfigure(0, weight=1)
+        self.main_frame.columnconfigure(1, weight=0)
+        self.main_frame.rowconfigure(0, weight=1)
+
+        # --- LEVÁ STRANA (LOGY) ---
+        self.left_panel = ttk.LabelFrame(self.main_frame, text="System Logs", padding="5")
+        self.left_panel.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        self.left_panel.columnconfigure(0, weight=1)
+        self.left_panel.rowconfigure(0, weight=1)
+
+        self.log_text = tk.Text(self.left_panel, state='disabled', wrap='word', bg="#ffffff", fg="#000000", font=("Consolas", 10))
+        self.log_text.grid(row=0, column=0, sticky="nsew")
+        
+        log_scroll = ttk.Scrollbar(self.left_panel, orient="vertical", command=self.log_text.yview)
+        log_scroll.grid(row=0, column=1, sticky="ns")
+        self.log_text.configure(yscrollcommand=log_scroll.set)
+
+        # --- PRAVÁ STRANA (WATCHERY) ---
+        self.right_panel = ttk.LabelFrame(self.main_frame, text="Watchers Configuration", padding="5")
+        self.right_panel.grid(row=0, column=1, sticky="ns")
+
+        # Seznam watcherů se scrollbarem
+        self.canvas = tk.Canvas(self.right_panel, highlightthickness=0, width=700) # Pevnější šířka pro pravou stranu
+        self.scrollbar = ttk.Scrollbar(self.right_panel, orient="vertical", command=self.canvas.yview)
+        self.scroll_frame = ttk.Frame(self.canvas)
+
+        self.scroll_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
+        self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+    def gui_size(self):
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        width = int(screen_width * 0.9)
+        height = int(screen_height * 0.7)
+        x = int((screen_width - width) / 2)
+        y = int((screen_height - height) / 2)
+        
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        #print(f"Screen size: {screen_width}x{screen_height}, GUI size: {width}x{height} at ({x},{y})")
+
+        
+
+    def append_log(self, text):
+        # Bezpečný zápis do GUI z jakéhokoli vlákna
+        self.root.after(0, self._actual_write, text)
+
+    def _actual_write(self, text):
+        self.log_text.config(state=tk.NORMAL)
+        self.log_text.insert(tk.END, text + "\n")
+        self.log_text.see(tk.END)
+        self.log_text.config(state=tk.DISABLED)
 
     # ----------------------------------------------------------------
-    def _log_to_text_widget(self, msg: str):
-        """Callback pro CallbackHandler — přidej zprávu do log panelu."""
-        try:
-            self.log_text.config(state=tk.NORMAL)
-            self.log_text.insert(tk.END, msg + "\n")
-            self.log_text.see(tk.END)
-            self.log_text.config(state=tk.DISABLED)
-        except Exception:
-            pass
+    def on_key_press(self, event):
+        """Handler pro stisk klávesy v GUI okně."""
+        focus = self.root.focus_get()
+        if not isinstance(focus, (tk.Entry, tk.Text)):
+            if event.char.lower() == 'd':
+                self.delete_files()
+            elif event.char.lower() == 'q':
+                self.quit_bot()
 
     # ----------------------------------------------------------------
     def load_config(self):
@@ -171,6 +257,7 @@ class ConfigGUI:
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 cfg = json.load(f)
+                self.logger.debug("Configuration loaded successfully.")
 
             # normalize watchers
             clean = []
@@ -303,7 +390,6 @@ class ConfigGUI:
         # -- Poslední: Remove button
         tk.Button(lf, text="Remove", fg="red", command=lambda: self.remove_watcher(idx)).grid(row=row, column=5, sticky="e")
 
-
     # ----------------------------------------------------------------
     def add_watcher(self):
         self.config["watchers"].append(DEFAULT_WATCHER.copy())
@@ -364,91 +450,40 @@ class ConfigGUI:
             return
 
         self.save_config()
+
+        self.logger.debug("Discord bot launched. Inputs locked.")
+        self.engine = main_client.DiscordEngine(self.config)
+        self.loop = asyncio.new_event_loop()
+        self.bot_thread = threading.Thread(
+            target=self.engine.start, 
+            args=(self.loop,), 
+            daemon=True
+        )
+        self.bot_thread.start()
+        self.bot_running = True
+
         for w in self.config["watchers"]:
             # Zamknout vstupy
             if "frame" in w: set_labelframe_state(w["frame"], enable=False)
-        self.bot_running = True
-        self.logger.debug("Discord bot launched. Inputs locked.")
-
-        # vytvořit nový loop a keyboard listener, spustit je v pozadí
-        here = os.path.dirname(os.path.abspath(__file__))
-        loop = asyncio.new_event_loop()
-        kb = KeyboardListener(loop)
-        kb.start()
-
-        def target():
-            # Tady řekneme vláknu: Používej tento loop
-            asyncio.set_event_loop(loop)
-            try:
-                main_client.run_client_with_loop(self.config, loop, keyboard_listener=kb)
-            except Exception as e:
-                self.logger.error(f"Client launch failed: {e}")
-            finally:
-                try:
-                    self.logger.info("Loop closed in thread.")
-                    # Pokud loop ještě běží, zkusíme ho zastavit
-                    if loop.is_running():
-                        loop.call_soon_threadsafe(loop.stop)
-                    # Počkáme sekundu, než ho zavřeme úplně
-                    loop.close()
-                    
-                except Exception as e:
-                    self.logger.debug(f"Error closing loop: {e}")
-
-        t = threading.Thread(target=target, daemon=True)
-        t.start()
-
-        # ensure state
-        self._bot_thread = t
-        self._kb = kb
-        self.bot_running = True
-
+        
     # ----------------------------------------------------------------
     def stop_bot(self, wait_secs: float = 1.0):
-        """Ukončí pouze běžícího bota (spuštěného přes Run Bot) a jeho keyboard listener.
-        GUI zůstane otevřené.
-        """
-        stop_web_server()
+        if not self.bot_running or not self.engine:
+            return
+        
         # nic dělat, pokud není co zastavovat
         if not getattr(self, "_kb", None) and not getattr(self, "_bot_thread", None):
             self.bot_running = False
             return
 
         self.logger.debug("Stoping bot...")
-        # Pošleme 'q' do listeneru (pokud existuje) -> listener zavolá loop.stop()
-        try:
-            if getattr(self, "_kb", None):
-                try:
-                    self._kb.emit_key("q")
-                except Exception:
-                    pass
-                # zastavit i samotný listener thread
-                try:
-                    self._kb.stop()
-                except Exception:
-                    pass
-                try:
-                    self._kb.join(timeout=wait_secs)
-                except Exception:
-                    pass
-        except Exception as e:
-            self.logger.error(f"❌ Listener stopping failed: {e}")
+        self.engine.stop()
 
-        # počkat krátce na ukončení bot-threadu
-        try:
-            if getattr(self, "_bot_thread", None):
-                try:
-                    self._bot_thread.join(timeout=wait_secs)
-                except Exception:
-                    pass
-        except Exception as e:
-            self.logger.error(f"❌ Wating on bot thread: {e}")
+        if self.bot_thread and self.bot_thread.is_alive():
+            self.bot_thread.join(timeout=wait_secs)
 
-        # uklidit reference a stav
-        self._kb = None
-        self._bot_thread = None
         self.bot_running = False
-        self.logger.info("Bot stopped.")
+
         for w in self.config["watchers"]:
             # Zamknout vstupy
             if "frame" in w: set_labelframe_state(w["frame"], enable=True)
@@ -457,18 +492,18 @@ class ConfigGUI:
     # ----------------------------------------------------------------
     def send_key_to_bot(self, key: str):
         """Emuluj stisk klávesy -> pošli do KeyboardListener (pokud běží)."""
-        if not getattr(self, "_kb", None) or not self.bot_running:
+        if not self.engine or not self.engine.kb_listener or not self.bot_running:
             self.logger.warning("Bot isn't running.")
             return
         try:
-            self._kb.emit_key(key)
+            self.engine.kb_listener.emit_key(key)
         except Exception as e:
             self.logger.error(f"Key sending failed: {e}")
 
     # ----------------------------------------------------------------
     def delete_files(self):
         # pokud běží bot, emuluj 'd' (watchery tak smažou svůj obsah)
-        if self.bot_running and getattr(self, "_kb", None):
+        if self.bot_running:
             self.send_key_to_bot("d")
             self.logger.info("Sent key 'd' to watchers.")
             return
@@ -477,61 +512,25 @@ class ConfigGUI:
         if not self.bot_running:
             self.logger.warning("Start bot for delete files.")
             return
-        for w in self.config["watchers"]:
-            try:
-                os.remove(w["file_path"])
-            except FileNotFoundError:
-                pass
-        self.logger.info("Watcher files deleted.")
 
     # ----------------------------------------------------------------
     def quit_bot(self):
+        self.logger.debug("Quit bot requested.")
         # pokud běží bot a máme listener, pouze ho zastav a NEZAVÍREJ GUI
-        if self.bot_running and getattr(self, "_kb", None):
+        if self.bot_running or self.engine or self.engine.kb_listener:
             self.stop_bot()
             return
         else:
             self.logger.info("Bot isn't running.")
 
-        
-        
-
     # ----------------------------------------------------------------
     def on_close(self):
-        """Handler pro kliknutí na křížek okna.
-        Po stisku X: pokud běží bot, zastav ho (stop_bot) a poté ukonči GUI a aplikaci.
-        (Chování: Quit Bot tlačítko -> zastaví bota a GUI zůstane; X -> zastaví bota a ukončí vše.)
-        """
-        try:
-            if self.bot_running:
-                # Ujisti se, že vše, co jsme spustili, je správně ukončeno.
-                try:
-                    # Požádej o zastavení (emit 'q', stop listeneru, join thread)
-                    self.stop_bot(wait_secs=2.0)
-                except Exception as e:
-                    # logni, ale pokračuj v ukončení GUI
-                    try:
-                        self.logger.error(f"Bot stopping failed during closing GUI: {e}")
-                    except Exception:
-                        pass
-            # Po pokusu o zastavení bota ukonči GUI
-            try:
-                self.root.destroy()
-            except Exception:
-                try:
-                    self.root.quit()
-                except Exception:
-                    pass
-        except Exception:
-            # fallback: pokud cokoli selže, zkusme GUI ukončit
-            try:
-                self.root.destroy()
-            except Exception:
-                try:
-                    self.root.quit()
-                except Exception:
-                    pass
-
+        if self.bot_running:
+            self.stop_bot()
+        
+        self.logging_ctx.__exit__(None, None, None) # Vypnutí loggeru
+        self.root.destroy()
+        sys.exit(0)
 
 # --------------------------------------------------------------------
 root = tk.Tk()

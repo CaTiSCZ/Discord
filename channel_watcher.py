@@ -298,8 +298,9 @@ class ChannelWatcher:
         column_spacing: int = 2,
         txt_output: bool = False,
         header_text: str = "",
-        sio = None,
         loop: Optional[asyncio.AbstractEventLoop] = None,
+        sio = None,
+        
     ):
         # parametry
         self.client = client
@@ -624,7 +625,22 @@ class ChannelWatcher:
     # ----------------- hlavní smyčka -----------------
     async def run(self):
         """Hlavní smyčka, která spouští cykly."""
-        self.channel = self.client.get_channel(self.channel_id)
+        self.channel_id = int(self.channel_id)
+        for attempt in range(3):
+            self.channel = self.client.get_channel(self.channel_id)
+            if self.channel:
+                break
+            logger.debug(f"Cache zatím prázdná pro {self.channel_id}, čekám (pokus {attempt+1}/3)...")
+            await asyncio.sleep(0.2)
+
+        if not self.channel:
+            logger.debug(f"Channel {self.channel_id} not found in cache, trying fetch_channel...")
+            try:
+                self.channel = await self.client.fetch_channel(self.channel_id)
+            except Exception as e:
+                logger.error(f"Failed to fetch channel {self.channel_id}: {e}")
+                return
+
         if not self.channel:
             logger.error(f"Channel {self.channel_id} not responding (get_channel returned None).")
             return
