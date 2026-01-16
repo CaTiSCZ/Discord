@@ -80,73 +80,9 @@ class ConfigGUI:
         self.bot_running = False
         
         self.setup_UI()
+        self.watcher_vars = [{} for _ in self.config.get("watchers", [])]
         
-        
-
-        """
-        # TOKEN INPUT (na jednom řádku vedle sebe)
-        token_frame = tk.Frame(root)
-        token_frame.pack(anchor="w", padx=10, pady=5)
-        
-        tk.Label(token_frame, text="Discord BOT TOKEN:", font=("Arial", 12, "bold")).pack(side="left", padx=(0, 10))
-        self.token_entry = tk.Entry(token_frame, width=80)
-        self.token_entry.pack(side="left", fill="x", expand=True)
-        self.token_entry.insert(0, self.config.get("TOKEN", ""))
-
-        # BUTTONS (pod tokenem)
-        btn_frame = tk.Frame(root)
-        btn_frame.pack(pady=5)
-        tk.Button(btn_frame, text="Add Watcher", command=self.add_watcher).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Save Configuration", command=self.save_config).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Run Bot", command=self.run_bot).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Delete Files (d)", command=self.delete_files).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Quit Bot (q)", command=self.quit_bot).pack(side="left", padx=5)
-
-        # PANED WINDOW (dělič mezi watchers a logy)
-        paned = tk.PanedWindow(root, orient="horizontal", sashwidth=5)
-        paned.pack(fill="both", expand=True, padx=5, pady=5)
-
-        # LEVÁ STRANA: WATCHERS
-        left_frame = tk.Frame(paned)
-        paned.add(left_frame, width=700)
-        
-        tk.Label(left_frame, text="Watchers:", font=("Arial", 10, "bold")).pack(anchor="w", padx=5)
-        
-        container = tk.Frame(left_frame)
-        container.pack(fill="both", expand=True, padx=5, pady=5)
-
-        canvas = tk.Canvas(container)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        canvas.configure(yscrollcommand=scrollbar.set)
-
-        scrollbar.pack(side="right", fill="y")
-        canvas.pack(side="left", fill="both", expand=True)
-
-        self.scroll_frame = tk.Frame(canvas)
-        canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
-
-        self.scroll_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-
-        # PRAVÁ STRANA: LOGY
-        right_frame = tk.Frame(paned)
-        paned.add(right_frame, width=700)
-        
-        tk.Label(right_frame, text="Logs:", font=("Arial", 10, "bold")).pack(anchor="w", padx=5)
-        log_frame = tk.Frame(right_frame)
-        log_frame.pack(fill="both", expand=True, padx=5, pady=5)
-
-        self.log_text = tk.Text(log_frame, height=8, width=100, state=tk.DISABLED, bg="white", fg="black", font=("Arial", 9))
-        log_scrollbar = ttk.Scrollbar(log_frame, orient="vertical", command=self.log_text.yview)
-        self.log_text.config(yscrollcommand=log_scrollbar.set)
-
-        self.log_text.pack(side="left", fill="both", expand=True)
-        log_scrollbar.pack(side="right", fill="y")
-        """
-
-        
+           
 
         # zavěsit handler pro kliknutí na křížek okna
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -216,6 +152,8 @@ class ConfigGUI:
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+
+
     def gui_size(self):
         screen_width = self.root.winfo_screenwidth()
         screen_height = self.root.winfo_screenheight()
@@ -224,7 +162,8 @@ class ConfigGUI:
         x = int((screen_width - width) / 2)
         y = int((screen_height - height) / 2)
         
-        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        self.root.state('zoomed')
+        #self.root.geometry(f"{width}x{height}+{x}+{y}")
         #print(f"Screen size: {screen_width}x{screen_height}, GUI size: {width}x{height} at ({x},{y})")
 
         
@@ -277,38 +216,156 @@ class ConfigGUI:
     def render_watchers(self):
         for w in self.scroll_frame.winfo_children():
             w.destroy()
+        self.watcher_vars = []
         for idx, watcher in enumerate(self.config["watchers"]):
-            self.render_one_watcher(idx, watcher)
+            self.watcher_vars.append({})
+            self.render_one_watcher(self.scroll_frame, idx, watcher)
 
+    def toggle_watcher_visibility(self, var_enabled, details_frame):
+            """Schová nebo zobrazí detaily watcheru."""
+            if var_enabled.get():
+                # Používáme pack, protože zbytek tvého GUI používá pack
+                details_frame.pack(fill="x", padx=15, pady=5, after=details_frame.master.winfo_children()[0])
+                # Poznámka: 'after' zajistí, že se to otevře pod hlavičkou
+            else:
+                details_frame.pack_forget()
     # ----------------------------------------------------------------
-    def render_one_watcher(self, idx, watcher):
-        """Render a watcher v multi-column layout pro úsporu vertikálního místa."""
+    def render_one_watcher(self, parent_frame, idx, watcher):
+        watcher_wrapper = ttk.Frame(parent_frame)
+        watcher_wrapper.pack(fill="x", padx=5, pady=5)
+
+        # 2. HLAVIČKA (vždy viditelná)
+        header_frame = ttk.Frame(watcher_wrapper)
+        header_frame.pack(fill="x")
+
+        enabled_var = tk.BooleanVar(value=watcher.get("enabled", True))
+        self.watcher_vars[idx]["enabled"] = enabled_var
+
+        # DETAILNÍ PANEL (Vše pod hlavičkou, co se bude schovávat)
+        # Použijeme LabelFrame, aby to vypadalo jako karta
+        details_frame = ttk.LabelFrame(watcher_wrapper, text=f"Nastavení sledování")
+
+        # Checkbutton v hlavičce
+        check = ttk.Checkbutton(
+            header_frame, 
+            text="ENABLED",
+            variable=enabled_var,
+            command=lambda: self.toggle_watcher_visibility(enabled_var, details_frame)
+        )
+        check.pack(side="left")
+
+        # Poznámka v hlavičce (aby bylo vidět, co je to za kanál i když je sbaleno)
+        ttk.Label(header_frame, text=" | Comment:").pack(side="left")
+        comment_entery = tk.StringVar(value=watcher.get("comment", ""))
+        self.watcher_vars[idx]["comment"] = comment_entery
+        ttk.Entry(header_frame, textvariable=comment_entery, width=40).pack(side="left", padx=5)
+
+        # Tlačítko smazat v hlavičce
+        tk.Button(header_frame, text="Remove", fg="red", command=lambda: self.remove_watcher(idx)).pack(side="right")
+        
+        # Channel ID
+        row_id = ttk.Frame(details_frame)
+        row_id.pack(fill="x", padx=5, pady=2)
+        ttk.Label(row_id, text="Channel ID:", width=10).pack(side="left")
+        var_cid = tk.IntVar(value=watcher.get("channel_id", ""))
+        self.watcher_vars[idx]["channel_id"] = var_cid
+        ttk.Entry(row_id, textvariable=var_cid, width=20).pack(side="left", expand=True, padx=5)
+
+        # File Path & Last ID File
+        ttk.Label(row_id, text="Output File:", width=10).pack(side="left", padx=(10,0))
+        var_path = tk.StringVar(value=watcher.get("file_path", "output.txt"))
+        self.watcher_vars[idx]["file_path"] = var_path
+        ttk.Entry(row_id, textvariable=var_path, width=20).pack(side="left", expand=True, padx=5)
+        # Last ID File
+        ttk.Label(row_id, text="Last ID File:", width=10).pack(side="left", padx=(10,0))
+        var_lastid = tk.StringVar(value=watcher.get("last_id_file", "last_id.txt"))
+        self.watcher_vars[idx]["last_id_file"] = var_lastid
+        ttk.Entry(row_id, textvariable=var_lastid, width=20).pack(side="left", expand=True, padx=5)
+
+        #interval, history limit, rows per column, column width
+        row_limits = ttk.Frame(details_frame)
+        row_limits.pack(fill="x", padx=5, pady=2)
+        #interval
+        ttk.Label(row_limits, text="Interval (s):").pack(side="left")
+        var_interval = tk.IntVar(value=watcher.get("interval", 10))
+        self.watcher_vars[idx]["interval"] = var_interval
+        ttk.Entry(row_limits, textvariable=var_interval, width=5).pack(side="left", padx=5)
+        # History Limit
+        ttk.Label(row_limits, text="History Limit:").pack(side="left")
+        var_history = tk.IntVar(value=watcher.get("history_limit", 100))
+        self.watcher_vars[idx]["history_limit"] = var_history
+        ttk.Entry(row_limits, textvariable=var_history, width=5).pack(side="left", padx=5)
+        # Rows per Column
+        ttk.Label(row_limits, text="Rows/Column:").pack(side="left", padx=(10,0))
+        var_rows = tk.IntVar(value=watcher.get("max_rows_per_column", 9))
+        self.watcher_vars[idx]["max_rows_per_column"] = var_rows
+        ttk.Entry(row_limits, textvariable=var_rows, width=5).pack(side="left", padx=5)
+        # Column Width
+        ttk.Label(row_limits, text="Column Width:").pack(side="left", padx=(10,0))
+        var_colwidth = tk.IntVar(value=watcher.get("max_column_width", 40))
+        self.watcher_vars[idx]["max_column_width"] = var_colwidth
+        ttk.Entry(row_limits, textvariable=var_colwidth, width=5).pack(side="left", padx=5)
+        # Ignore Mode & Show Author
+        row_modes = ttk.Frame(details_frame)
+
+        row_modes.pack(fill="x", padx=5, pady=2)
+        # Ignore Mode
+        ttk.Label(row_modes, text="Ignore Mode:").pack(side="left")
+        var_ignore = tk.StringVar(value=str(watcher.get("ignore_mode", "None")))
+        self.watcher_vars[idx]["ignore_mode"] = var_ignore
+        ignore_combo = ttk.Combobox(row_modes, textvariable=var_ignore, values=["None", "bot", "human"], width=12)
+        ignore_combo.pack(side="left", padx=5)
+        # Show Author
+        ttk.Label(row_modes, text="Show Author:").pack(side="left", padx=(10,0))
+        var_show_author = tk.StringVar(value=str(watcher.get("show_author_mode", "both")))
+        self.watcher_vars[idx]["show_author"] = var_show_author
+        author_combo = ttk.Combobox(row_modes, textvariable=var_show_author, values=["both", "human", "bot", "None"], width=12)
+        author_combo.pack(side="left", padx=5)
+
+        # Header Text
+        row_header = ttk.Frame(details_frame)
+        row_header.pack(fill="x", padx=5, pady=2)
+        ttk.Label(row_header, text="Header Text:").pack(side="left")
+        var_header = tk.StringVar(value=watcher.get("header_text", ""))
+        self.watcher_vars[idx]["header_text"] = var_header
+        ttk.Entry(row_header, textvariable=var_header, width=20).pack(side="left", padx=5)
+        
+        ttk.Label(row_header, text="Socket Panel:").pack(side="left", padx=(10,0))
+        var_panel = tk.StringVar(value=watcher.get("socket_panel", "panel-a"))
+        self.watcher_vars[idx]["socket_panel"] = var_panel
+        panel_combo = ttk.Combobox(row_header, textvariable=var_panel, values=["panel-a", "panel-b"], width=10)
+        panel_combo.pack(side="left", padx=5)
+
+        
+
+        # Další nastavení (Txt Output, Manual Clear atd.)
+        row_opts = ttk.Frame(details_frame)
+        row_opts.pack(fill="x", padx=5, pady=2)
+
+        var_txt = tk.BooleanVar(value=watcher.get("txt_output", True))
+        self.watcher_vars[idx]["txt_output"] = var_txt
+        ttk.Checkbutton(row_opts, text="TXT Output", variable=var_txt).pack(side="left", padx=5)
+
+        var_clear = tk.BooleanVar(value=watcher.get("manual_clear", False))
+        self.watcher_vars[idx]["manual_clear"] = var_clear
+        ttk.Checkbutton(row_opts, text="Manual Clear", variable=var_clear).pack(side="left", padx=5)
+
+        # 3. NASTAVENÍ POČÁTEČNÍ VIDITELNOSTI
+        self.toggle_watcher_visibility(enabled_var, details_frame)
+
+
+
+        """Render a watcher v multi-column layout pro úsporu vertikálního místa.
         lf = ttk.LabelFrame(self.scroll_frame, text=f"Watcher {idx+1}")
         lf.pack(fill="x", padx=10, pady=5)
         watcher["frame"] = lf
 
         # ROW = logická řada, která se bude přepočítávat na grid
         # Každý "row" ve smyslu gridu se může skládat z více sloupců
-        row = 0
-        # -- NULTÝ ŘÁDEK (NOVÝ): Enabled a Comment --
-        enabled_var = tk.BooleanVar(value=watcher.get("enabled", True))
-        tk.Checkbutton(lf, text="AKTIVNÍ", variable=enabled_var, font=("Arial", 9, "bold")).grid(row=row, column=0, sticky="w")
-        watcher["enabled_var"] = enabled_var
-
-        tk.Label(lf, text="Poznámka:").grid(row=row, column=1, sticky="e")
-        comment_entry = tk.Entry(lf, width=50)
-        comment_entry.insert(0, str(watcher.get("comment", "")))
-        comment_entry.grid(row=row, column=2, columnspan=3, sticky="w", padx=5)
-        watcher["comment_entry"] = comment_entry
         
-        row += 1
 
         # -- První řádek: Channel ID, Output File, Last ID File
-        tk.Label(lf, text="Channel ID:").grid(row=row, column=0, sticky="w")
-        channel_entry = tk.Entry(lf, width=20)
-        channel_entry.insert(0, str(watcher.get("channel_id", "")))
-        channel_entry.grid(row=row, column=1, sticky="w")
-        watcher["channel_id_entry"] = channel_entry
+        
 
         tk.Label(lf, text="Output File:").grid(row=row, column=2, sticky="w")
         file_entry = tk.Entry(lf, width=20)
@@ -386,10 +443,8 @@ class ConfigGUI:
         watcher["socket_panel_combo"] = panel_combo
         
         row += 1
-
-        # -- Poslední: Remove button
-        tk.Button(lf, text="Remove", fg="red", command=lambda: self.remove_watcher(idx)).grid(row=row, column=5, sticky="e")
-
+        """
+        
     # ----------------------------------------------------------------
     def add_watcher(self):
         self.config["watchers"].append(DEFAULT_WATCHER.copy())
