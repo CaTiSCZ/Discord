@@ -14,11 +14,7 @@ html, body {
 .panel {
   position: absolute;
   box-sizing: border-box;
-
-  background: rgba(0, 0, 0, 0.9);
-  color: white;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-
+  border: 2px solid rgba(255, 255, 255, 0);
   padding: 10px;
 }
 
@@ -28,7 +24,6 @@ html, body {
 #panel-a {
   top: 700px;
   left: 2px;
-  
   width: auto;
   max-width: 2000px;
   height: auto;
@@ -39,13 +34,27 @@ html, body {
 #panel-b {
   top: 1060px;
   left: 2px;
-
   width: auto;
   max-width: 2000px;
   height: auto;
   max-height: 380px;
 }
-
+#panel-c {
+  top: 700px;
+  left: 1230px;
+  width: auto;
+  max-width: 2000px;
+  height: auto;
+  max-height: 350px;
+}
+#panel-d {
+  top: 2px;
+  left: 2px;
+  width: auto;
+  max-width: 2556px;
+  height: auto;
+  max-height: 1434px;
+}
 /* Nadpis */
 .panel h2 {
   margin: 0 0 8px 0;
@@ -53,10 +62,35 @@ html, body {
 }
 
 /* Textový obsah */
-.panel pre {
-  margin: 0;
-  white-space: pre;
-  font-size: 26px;
-  line-height: 1.3;
-  text-shadow: 1px 1px 2px black;
+
+
+.content-area {
+    font-family: 'Courier New', Courier, monospace; /* Monospaced pro sloupce */
+    white-space: pre;           /* Zásadní: zachová mezery a konce řádků z Pythonu */
+    line-height: 1.2;           /* Výška řádku pro lepší čitelnost */
+    font-size: 31px;
+    text-shadow: 1px 1px 2px black; /* Přidá stín pro lepší čitelnost na různých pozadích */
+    background-color: rgba(0, 0, 0, 0.98); /* Pozadí může být černé pro kontrast */
+    color: #e2e2e2;              /* Výchozí barva textu bílá */  
+}
+
+/* Definice stylů pro tagy, které vyrobíš v normalize_line */
+.content-area b, .content-area strong {
+    font-weight: bold;
+    color: #e2e2e2;             /* Příklad: tučný text může mít jinou barvu */
+}
+
+.content-area i, .content-area em {
+    font-style: italic;
+    color: #e2e2e2;
+}
+
+.content-area u {
+    text-decoration: underline;
+    color: #e2e2e2;
+}
+
+.content-area s, .content-area strike {
+    text-decoration: line-through;
+    color: #adadad;             /* Příklad: přeškrtnutý text může být šedý */
 }

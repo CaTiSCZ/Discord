@@ -121,7 +121,7 @@ class MessageFormatter:
             if text.lower().startswith(prefix):
                 text = text.split(":", 1)[1].strip()
                 break
-        if type_output == "txt" or type_output == "socket":
+        if type_output == "txt":
             text = re.sub(r"~~(.*?)~~", r"-\1-", text)
             text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
             text = re.sub(r"\*(.*?)\*", r"\1", text)
