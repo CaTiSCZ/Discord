@@ -112,7 +112,7 @@ class MessageFormatter:
         return output_lines
 
     # ----------------- normalizace -----------------
-    def normalize_line(self, text: str, txt_output:bool = False) -> str:
+    def normalize_line(self, text: str, type_output:str) -> str:
         """Odstraní markdowny a převede některé značky na HTML."""
         text = text.strip()
         text = text.replace("__", "").replace("`", "")
@@ -121,7 +121,7 @@ class MessageFormatter:
             if text.lower().startswith(prefix):
                 text = text.split(":", 1)[1].strip()
                 break
-        if txt_output:
+        if type_output == "txt" or type_output == "socket":
             text = re.sub(r"~~(.*?)~~", r"-\1-", text)
             text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
             text = re.sub(r"\*(.*?)\*", r"\1", text)
@@ -218,22 +218,24 @@ class MessageFormatter:
         return []
 
     # ----------------- render do HTML -----------------
-    def save_html(self, all_lines: List[str], file_path: str, txt_output: bool = False):
+    def save_html(self, all_lines: List[str], file_path: str, type_output: bool = False):
         """Uloží HTML file. all_lines jsou už normalized a připravené."""
         #self.max_line_len = max((self.visible_len(line) for line in all_lines), default=0)
         #self.event_save_html.emit(file_path, self.max_line_len)
-        if self.sio and self.loop:
-            event_name = 'new_message' if all_lines else 'clear_messages'
-            payload = {'lines': all_lines, 'channel_id': self.socket_panel}
-            try:
-                asyncio.run_coroutine_threadsafe(
-                    self.sio.emit(event_name, payload), 
-                    self.loop
-                )
-                logger.debug(f"Emitted via socket: {event_name} to {self.socket_panel}")
-            except Exception as e:
-                logger.error(f"Failed to emit via socket: {e}")
-        if txt_output:
+        if type_output == "socket":
+            if self.sio and self.loop:
+                event_name = 'new_message' if all_lines else 'clear_messages'
+                payload = {'lines': all_lines, 'channel_id': self.socket_panel}
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        self.sio.emit(event_name, payload), 
+                        self.loop
+                    )
+                    logger.debug(f"Emitted via socket: {event_name} to {self.socket_panel}")
+                except Exception as e:
+                    logger.error(f"Failed to emit via socket: {e}")
+            return
+        if type_output == "txt":
             self.save_txt(all_lines, file_path)
             return
         html_lines = "\n".join(all_lines)
@@ -269,12 +271,14 @@ s {{ text-decoration: line-through; }}
 """
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(html_content)
+        logger.debug(f"HTML file saved: {file_path}")
     def save_txt(self,all_lines: List[str], file_path: str):
         """Uloží TXT file. all_lines jsou už normalized a připravené."""
         all_lines = [line.replace("&nbsp;", " ") for line in all_lines]
         txt_lines = "\n".join(all_lines)
         with open(file_path, "w", encoding="utf-8") as f:
             f.write(txt_lines)
+        logger.debug(f"TXT file saved: {file_path}")
         
 # -----------------------------------------------------------------------------
 # ChannelWatcher
@@ -296,7 +300,7 @@ class ChannelWatcher:
         max_rows_per_column: int = 9,
         max_column_width: int = 40,
         column_spacing: int = 2,
-        txt_output: bool = False,
+        type_output:str = "txt",  # "html", "txt", "socket"
         header_text: str = "",
         loop: Optional[asyncio.AbstractEventLoop] = None,
         sio = None,
@@ -314,7 +318,7 @@ class ChannelWatcher:
         self.show_author_mode = show_author_mode
         self.ignore_mode = ignore_mode
         self.manual_clear = manual_clear
-        self.txt_output = txt_output
+        self.type_output = type_output
         self.header_text = header_text
         self.sio = sio
         self.channel = None
@@ -505,7 +509,7 @@ class ChannelWatcher:
             is_bot = item.get("is_bot", False)
             
             # provést normalizaci (markdown -> HTML)
-            content_lines = [self.formatter.normalize_line(l, self.txt_output) for l in content.splitlines()]
+            content_lines = [self.formatter.normalize_line(l, self.type_output) for l in content.splitlines()]
             if not content_lines:
                 continue
 
@@ -516,7 +520,6 @@ class ChannelWatcher:
                 parsed = self.formatter.detect_roll_type_and_parse(content_lines, author)
                 if parsed:
                     content_lines = parsed 
-           
 
             show_author = False
             if self.show_author_mode == "both":
@@ -571,10 +574,9 @@ class ChannelWatcher:
         self.integrate_changes(added, edited)
         self.enrich_cache_items_from_recent(recent_msgs)
         lines = self.prepare_render_lines()
-        self.formatter.save_html(lines, self.file_path, self.txt_output)
+        self.formatter.save_html(lines, self.file_path, self.type_output)
         self.file_empty = False
         self.manual_delete_allowed = False  
-        logger.debug(f"{self.file_path} changed.")
         return lines
 
     # ----------------- hlavní cyklus (jeden běh) -----------------
@@ -584,7 +586,6 @@ class ChannelWatcher:
             result = await self.find_new_and_updates(recent_msgs)
             added = result["added"]
             edited = result["edited"]
-
 
             if added or edited:
                 # nové zprávy → aktualizuj cache a HTML
@@ -601,7 +602,7 @@ class ChannelWatcher:
                 if self.cache:
                     self.cache.clear()
                     self.old_last_id = self.last_id
-                    self.formatter.save_html([], self.file_path, self.txt_output)
+                    self.formatter.save_html([], self.file_path, self.type_output)
                     self.file_empty = True
                     logger.debug(f"No new message, {self.file_path} is cleared")
                 return
@@ -613,15 +614,14 @@ class ChannelWatcher:
     
     def on_keypress(self, key: str):
         if key == "d" and self.manual_delete_allowed and not self.file_empty:
-            logger.debug(f"{self.file_path} is cleared")
+            logger.debug(f"Last messages from #{self.channel.name} manually cleared.")
             self.cache = []
             self.file_empty = True
-            self.formatter.save_html([], self.file_path, self.txt_output)
+            self.formatter.save_html([], self.file_path, self.type_output)
             self.manual_delete_allowed = False
         elif key == "d" and self.manual_clear and not self.manual_delete_allowed:
             logger.warning(f"Manual clear for #{self.channel.name} not allowed yet.")
         
-
     # ----------------- hlavní smyčka -----------------
     async def run(self):
         """Hlavní smyčka, která spouští cykly."""
@@ -646,7 +646,7 @@ class ChannelWatcher:
             return
         logger.info(f"Watch target: {self.channel.guild.name} > #{self.channel.name}")
         self.load_last_ids()
-        if self.txt_output:
+        if self.type_output == "txt":
             self.file_path = self.file_path.replace(".html", ".txt")
         while self.running:
             await self.run_cycle()

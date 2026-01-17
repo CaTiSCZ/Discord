@@ -28,37 +28,41 @@ DEFAULT_WATCHER = {
     "show_author_mode": "both",
     "ignore_mode": None,
     "manual_clear": False,
-    "txt_output": True,
+    "type_output": "txt",
     "max_rows_per_column": 9,
     "max_column_width": 40,
     "header_text": "",
     "column_spacing": 2
 }
 
-def set_labelframe_state(labelframe, enable=False):
-    state = 'disabled' if not enable else 'normal'
-    for child in labelframe.winfo_children():
+def set_widget_state(widget, enable=False):
+    state = 'normal' if enable else 'disabled'
+    
         # rekurze pro kontejnery (Frame/LabelFrame/ttk.Frame atd.)
-        if isinstance(child, (tk.Frame, ttk.Frame, tk.LabelFrame, ttk.LabelFrame)):
-            set_labelframe_state(child, enable=enable)
-            continue
-        try:
-            # ttk widgety mají metodu state()
-            if hasattr(child, 'state') and callable(child.state):
-                if not enable:
-                    child.state(['disabled'])
-                else:
-                    child.state(['!disabled'])
+    children = widget.winfo_children()
+    if children:
+        for child in children:
+            set_widget_state(child, enable=enable)
+        
+    try:
+        # ttk widgety mají metodu state()
+        if hasattr(widget, 'state') and callable(widget.state):
+            if not enable:
+                widget.state(['disabled'])
             else:
-                child.configure(state=state)
-        except Exception:
-            # některé widgety nemají state/configure stejným způsobem — přeskočíme je
-            pass
+                widget.state(['!disabled'])
+        else:
+            widget.configure(state=state)
+    except Exception:
+        # některé widgety nemají state/configure stejným způsobem — přeskočíme je
+        pass
 
 class ConfigGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Discord Bot Control Panel")
+
+        self.lockable = {}
 
         self.gui_size()
         
@@ -82,6 +86,7 @@ class ConfigGUI:
         self.setup_UI()
         self.watcher_vars = [{} for _ in self.config.get("watchers", [])]
         
+        
            
 
         # zavěsit handler pro kliknutí na křížek okna
@@ -103,16 +108,23 @@ class ConfigGUI:
         self.token_entry = tk.Entry(token_frame, width=80)
         self.token_entry.pack(side="left", fill="x", expand=True)
         self.token_entry.insert(0, self.config.get("TOKEN", ""))
+        self.lockable["token"] = self.token_entry
 
         # BUTTONS (pod tokenem)
         btn_frame = tk.Frame(root)
         btn_frame.pack(pady=5)
-        tk.Button(btn_frame, text="Add Watcher", command=self.add_watcher).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Save Configuration", command=self.save_config).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Run Bot", command=self.run_bot).pack(side="left", padx=5)
+        addW = tk.Button(btn_frame, text="Add Watcher", command=self.add_watcher)
+        addW.pack(side="left", padx=5)
+        saveBtn = tk.Button(btn_frame, text="Save Configuration", command=self.save_config)
+        saveBtn.pack(side="left", padx=5)
+        run = tk.Button(btn_frame, text="Run Bot", command=self.run_bot)
+        run.pack(side="left", padx=5)
         tk.Button(btn_frame, text="Delete Files (d)", command=self.delete_files).pack(side="left", padx=5)
         tk.Button(btn_frame, text="Quit Bot (q)", command=self.quit_bot).pack(side="left", padx=5)
         #tk.Button(btn_frame, text="GUI size", command=self.gui_size).pack(side="left", padx=5)
+        self.lockable["ADD"] = addW
+        self.lockable["SAVE"] = saveBtn
+        self.lockable["RUN"] = run
 
         # Hlavní kontejner
         self.main_frame = ttk.Frame(self.root, padding="10")
@@ -216,6 +228,7 @@ class ConfigGUI:
     def render_watchers(self):
         for w in self.scroll_frame.winfo_children():
             w.destroy()
+        self.lockable = {k: v for k, v in self.lockable.items() if not k.startswith("watcher_")}
         self.watcher_vars = []
         for idx, watcher in enumerate(self.config["watchers"]):
             self.watcher_vars.append({})
@@ -233,6 +246,8 @@ class ConfigGUI:
     def render_one_watcher(self, parent_frame, idx, watcher):
         watcher_wrapper = ttk.Frame(parent_frame)
         watcher_wrapper.pack(fill="x", padx=5, pady=5)
+
+        self.watcher_vars[idx]["wrapper"] = watcher_wrapper
 
         # 2. HLAVIČKA (vždy viditelná)
         header_frame = ttk.Frame(watcher_wrapper)
@@ -336,114 +351,25 @@ class ConfigGUI:
         panel_combo = ttk.Combobox(row_header, textvariable=var_panel, values=["panel-a", "panel-b"], width=10)
         panel_combo.pack(side="left", padx=5)
 
+        ttk.Label(row_header, text="Type Output:").pack(side="left", padx=(10,0))
+        var_type_output = tk.StringVar(value=watcher.get("type_output", "txt"))
+        self.watcher_vars[idx]["type_output"] = var_type_output
+        type_combo = ttk.Combobox(row_header, textvariable=var_type_output, values=["txt", "html", "socket"], width=10)
+        type_combo.pack(side="left", padx=5)
+
         
 
         # Další nastavení (Txt Output, Manual Clear atd.)
         row_opts = ttk.Frame(details_frame)
         row_opts.pack(fill="x", padx=5, pady=2)
 
-        var_txt = tk.BooleanVar(value=watcher.get("txt_output", True))
-        self.watcher_vars[idx]["txt_output"] = var_txt
-        ttk.Checkbutton(row_opts, text="TXT Output", variable=var_txt).pack(side="left", padx=5)
-
         var_clear = tk.BooleanVar(value=watcher.get("manual_clear", False))
         self.watcher_vars[idx]["manual_clear"] = var_clear
         ttk.Checkbutton(row_opts, text="Manual Clear", variable=var_clear).pack(side="left", padx=5)
-
+        
+        self.lockable[f"watcher_{idx}"] = watcher_wrapper
         # 3. NASTAVENÍ POČÁTEČNÍ VIDITELNOSTI
         self.toggle_watcher_visibility(enabled_var, details_frame)
-
-
-
-        """Render a watcher v multi-column layout pro úsporu vertikálního místa.
-        lf = ttk.LabelFrame(self.scroll_frame, text=f"Watcher {idx+1}")
-        lf.pack(fill="x", padx=10, pady=5)
-        watcher["frame"] = lf
-
-        # ROW = logická řada, která se bude přepočítávat na grid
-        # Každý "row" ve smyslu gridu se může skládat z více sloupců
-        
-
-        # -- První řádek: Channel ID, Output File, Last ID File
-        
-
-        tk.Label(lf, text="Output File:").grid(row=row, column=2, sticky="w")
-        file_entry = tk.Entry(lf, width=20)
-        file_entry.insert(0, str(watcher.get("file_path", "")))
-        file_entry.grid(row=row, column=3, sticky="w")
-        watcher["file_path_entry"] = file_entry
-
-        tk.Label(lf, text="Last ID File:").grid(row=row, column=4, sticky="w")
-        last_id_entry = tk.Entry(lf, width=20)
-        last_id_entry.insert(0, str(watcher.get("last_id_file", "")))
-        last_id_entry.grid(row=row, column=5, sticky="w")
-        watcher["last_id_file_entry"] = last_id_entry
-        row += 1
-
-        # -- Druhý řádek: Interval, History Limit, Rows per Column, Column Width
-        tk.Label(lf, text="Interval:").grid(row=row, column=0, sticky="w")
-        interval_entry = tk.Entry(lf, width=10)
-        interval_entry.insert(0, str(watcher.get("interval", 10)))
-        interval_entry.grid(row=row, column=1, sticky="w")
-        watcher["interval_entry"] = interval_entry
-
-        tk.Label(lf, text="History Limit:").grid(row=row, column=2, sticky="w")
-        history_entry = tk.Entry(lf, width=10)
-        history_entry.insert(0, str(watcher.get("history_limit", 10)))
-        history_entry.grid(row=row, column=3, sticky="w")
-        watcher["history_limit_entry"] = history_entry
-
-        tk.Label(lf, text="Rows/Column:").grid(row=row, column=4, sticky="w")
-        rows_entry = tk.Entry(lf, width=5)
-        rows_entry.insert(0, str(watcher.get("max_rows_per_column", 9)))
-        rows_entry.grid(row=row, column=5, sticky="w")
-        watcher["max_rows_per_column_entry"] = rows_entry
-        row += 1
-
-        tk.Label(lf, text="Column Width:").grid(row=row, column=0, sticky="w")
-        col_width_entry = tk.Entry(lf, width=5)
-        col_width_entry.insert(0, str(watcher.get("max_column_width", 40)))
-        col_width_entry.grid(row=row, column=1, sticky="w")
-        watcher["max_column_width_entry"] = col_width_entry
-
-        # -- Třetí řádek: Ignore Mode, Show Author
-        tk.Label(lf, text="Ignore Mode:").grid(row=row, column=2, sticky="w")
-        ignore_combo = ttk.Combobox(lf, values=["None", "bot", "human"], width=12)
-        ignore_combo.set(str(watcher.get("ignore_mode", "None")))
-        ignore_combo.grid(row=row, column=3, sticky="w")
-        watcher["ignore_combo"] = ignore_combo
-
-        tk.Label(lf, text="Show Author:").grid(row=row, column=4, sticky="w")
-        author_combo = ttk.Combobox(lf, values=["both", "human", "bot", "None"], width=12)
-        author_combo.set(str(watcher.get("show_author_mode", "both")))
-        author_combo.grid(row=row, column=5, sticky="w")
-        watcher["author_combo"] = author_combo
-        row += 1
-
-        # -- Čtvrtý řádek: checkboxes + header text
-        manual_var = tk.BooleanVar(value=watcher.get("manual_clear", False))
-        txt_var = tk.BooleanVar(value=watcher.get("txt_output", True))
-
-        tk.Checkbutton(lf, text="Manual Clear (d)", variable=manual_var).grid(row=row, column=0, sticky="w")
-        watcher["manual_var"] = manual_var
-
-        tk.Checkbutton(lf, text="TXT Output", variable=txt_var).grid(row=row, column=1, sticky="w")
-        watcher["txt_var"] = txt_var
-
-        tk.Label(lf, text="Header:").grid(row=row, column=2, sticky="w")
-        header_entry = tk.Entry(lf, width=16)
-        header_entry.insert(0, str(watcher.get("header_text", "")))
-        header_entry.grid(row=row, column=3, sticky="w")
-        watcher["header_entry"] = header_entry
-
-        tk.Label(lf, text="Socket Panel:").grid(row=row, column=4, sticky="w")
-        panel_combo = ttk.Combobox(lf, values=["panel-a", "panel-b"], width=10)
-        panel_combo.set(str(watcher.get("socket_panel", "panel-a")))
-        panel_combo.grid(row=row, column=5, sticky="w")
-        watcher["socket_panel_combo"] = panel_combo
-        
-        row += 1
-        """
         
     # ----------------------------------------------------------------
     def add_watcher(self):
@@ -461,39 +387,63 @@ class ConfigGUI:
             self.config["TOKEN"] = self.token_entry.get()
             clean_watchers = []
             #watcher by měl být třída
-            for w in self.config["watchers"]:
+            for w in self.watcher_vars:
+                watcher_name = w.get("comment").get() if "comment" in w else "Unknown"
                 def get_int(key, default):
-                    val = w.get(key).get() if key in w else w.get(default, 0)
-                    try: return int(val)
-                    except: return default
+                    if key not in w: 
+                        self.logger.warning(f" [{watcher_name}] - Key '{key}' not found; using default {default}.")
+                        return default
+                    try: 
+                        return int(w[key].get())
+                    except (ValueError, TypeError): 
+                        self.logger.warning(f" [{watcher_name}] - Invalid int for key '{key}'; using default {default}.")
+                        return default
+                def get_str(key, default):
+                    if key not in w: 
+                        self.logger.warning(f" [{watcher_name}] - Key '{key}' not found; using default {default}.")
+                        return default
+                    return str(w[key].get())
+                def get_bool(key, default):
+                    if key not in w: 
+                        self.logger.warning(f" [{watcher_name}] - Key '{key}' not found; using default {default}.")
+                        return default
+                    val = w[key].get()
+                    if isinstance(val, str):
+                        if val.lower() == "false": return False
+                        if val.lower() == "true": return True
+                    try: return bool(val)
+                    except (ValueError, TypeError): 
+                        self.logger.warning(f" [{watcher_name}] - Invalid bool for key '{key}'; using default {default}.")
+                        return default
+                def get_combo(key, default):
+                    if key not in w: 
+                        self.logger.warning(f" [{watcher_name}] - Key '{key}' not found; using default {default}.")
+                        return default
+                    val = w[key].get()
+                    return None if val == "None" else str(val)
+                
                 clean = {
-                    "enabled": w.get("enabled_var").get() if "enabled_var" in w else bool(w.get("enabled", True)),
-                    "comment": w.get("comment_entry").get() if "comment_entry" in w else str(w.get("comment", "")),
-                    "channel_id": w.get("channel_id_entry").get() if "channel_id_entry" in w else w.get("channel_id", ""),
-                    "file_path": w.get("file_path_entry").get() if "file_path_entry" in w else w.get("file_path", "output.txt"),
-                    "last_id_file": w.get("last_id_file_entry").get() if "last_id_file_entry" in w else w.get("last_id_file", "last_id.txt"),
-                    "socket_panel": w.get("socket_panel_combo").get() if "socket_panel_combo" in w else w.get("socket_panel", "panel-a"),
-                    "interval": get_int("interval_entry", 10),
-                    "history_limit": get_int("history_limit_entry", 10),
-                    "show_author_mode": None if (w.get("author_combo") and w["author_combo"].get() == "None") else (w.get("author_combo").get() if "author_combo" in w else w.get("show_author_mode", "both")),
-                    "ignore_mode": None if (w.get("ignore_combo") and w["ignore_combo"].get() == "None") else (w.get("ignore_combo").get() if "ignore_combo" in w else w.get("ignore_mode", None)),
-                    "manual_clear": w.get("manual_var").get() if "manual_var" in w else bool(w.get("manual_clear", False)),
-                    "txt_output": w.get("txt_var").get() if "txt_var" in w else bool(w.get("txt_output", True)),
-                    "header_text": w.get("header_entry").get() if "header_entry" in w else str(w.get("header_text", "")),
-                    "max_rows_per_column": get_int("max_rows_per_column_entry", 9),
-                    "max_column_width": get_int("max_column_width_entry", 40),
+                    "enabled": get_bool("enabled", True),
+                    "comment": get_str("comment", ""),
+                    "channel_id": get_str("channel_id", ""),
+                    "file_path": get_str("file_path", "output.txt"),
+                    "last_id_file": get_str("last_id_file", "last_id.txt"),
+                    "socket_panel": get_str("socket_panel", "panel-a"),
+                    "interval": get_int("interval", 10),
+                    "history_limit": get_int("history_limit", 10),
+                    "show_author_mode": get_combo("show_author", "both"),
+                    "ignore_mode": get_combo("ignore_mode", None),
+                    "manual_clear": get_bool("manual_clear", False),
+                    "type_output": get_combo("type_output", "txt"),
+                    "header_text": get_str("header_text", ""),
+                    "max_rows_per_column": get_int("max_rows_per_column", 9),
+                    "max_column_width": get_int("max_column_width", 40),
                     "column_spacing": int(w.get("column_spacing", 2))
                 }
-                # Normalizace "None" řetězců na skutečné None
-                if clean["ignore_mode"] == "None": clean["ignore_mode"] = None
-                if clean["show_author_mode"] == "None": clean["show_author_mode"] = None
-                if clean["enabled"] == "true": clean["enabled"] = True
-                if clean["enabled"] == "false": clean["enabled"] = False
                 clean_watchers.append(clean)
-            config=self.config.copy()
-            config["watchers"] = clean_watchers
+            self.config["watchers"] = clean_watchers
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(config, f, indent=4)
+                json.dump(self.config, f, indent=4, ensure_ascii=False)
             self.logger.info("Configuration saved successfully.")
         except Exception as e:
             self.logger.error(f"Error saving configuration: {e}")
@@ -516,32 +466,29 @@ class ConfigGUI:
         )
         self.bot_thread.start()
         self.bot_running = True
-
-        for w in self.config["watchers"]:
-            # Zamknout vstupy
-            if "frame" in w: set_labelframe_state(w["frame"], enable=False)
+        for widget in self.lockable.values():
+            set_widget_state(widget, enable=False)
         
     # ----------------------------------------------------------------
     def stop_bot(self, wait_secs: float = 1.0):
-        if not self.bot_running or not self.engine:
-            return
-        
-        # nic dělat, pokud není co zastavovat
-        if not getattr(self, "_kb", None) and not getattr(self, "_bot_thread", None):
-            self.bot_running = False
+        if not self.bot_running:
             return
 
         self.logger.debug("Stoping bot...")
-        self.engine.stop()
+        if self.engine:
+            try:
+                self.engine.stop()
+            except Exception as e:
+                self.logger.error(f"Error while stopping engine: {e}")
 
-        if self.bot_thread and self.bot_thread.is_alive():
-            self.bot_thread.join(timeout=wait_secs)
+        self.root.after(int(wait_secs * 1000), self._finalize_stop)
 
+    def _finalize_stop(self):
         self.bot_running = False
-
-        for w in self.config["watchers"]:
-            # Zamknout vstupy
-            if "frame" in w: set_labelframe_state(w["frame"], enable=True)
+        self.logger.info("Bot stopped. Inputs unlocked.")
+        for widget in self.lockable.values():
+            if widget: 
+                set_widget_state(widget, enable=True)
 
 
     # ----------------------------------------------------------------
@@ -572,7 +519,7 @@ class ConfigGUI:
     def quit_bot(self):
         self.logger.debug("Quit bot requested.")
         # pokud běží bot a máme listener, pouze ho zastav a NEZAVÍREJ GUI
-        if self.bot_running or self.engine or self.engine.kb_listener:
+        if self.bot_running:
             self.stop_bot()
             return
         else:

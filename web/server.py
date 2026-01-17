@@ -13,7 +13,7 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from logger import setup_logger
-logger = setup_logger("WebServer", level=logging.INFO)
+logger = setup_logger("WebServer", level=logging.DEBUG)
 
 
 
@@ -57,8 +57,8 @@ async def connect(sid, environ):
         client_name = user_agent.split("/")[0]  # Zkusíme získat název klienta z User-Agent
 
     # Teď bude log vypadat mnohem lépe
-    logger.info(f"Connection opened: {client_name} (IP: {ip})")
-    logger.debug(f"Technical SID: {sid}")
+    logger.info(f"Connection opened: {client_name} ")
+    logger.debug(f"Technical SID: {sid}, (IP: {ip}), User-Agent: {user_agent}")
 
 @sio.event
 async def disconnect(sid):
@@ -91,11 +91,14 @@ async def start_web_server(host="0.0.0.0", port=8080):
         server_instance = None 
     
 
-def stop_web_server():
+async def stop_web_server():
     global server_instance
     if server_instance:
-        logger.info("Shutting down Web Server...")
+        logger.debug("Shutting down Web Server...")
         server_instance.should_exit = True
-        
+        if hasattr(server_instance, 'shutdown'):
+            await server_instance.shutdown()
         server_instance = None
-        logger.info("Web Server was successfully shut down.")
+        logger.debug("Web Server was successfully shut down.")
+    else:
+        logger.info("Web Server is not running.")

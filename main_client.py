@@ -61,7 +61,7 @@ class DiscordEngine:
                 max_rows_per_column=int(w.get("max_rows_per_column", 9)),
                 max_column_width=int(w.get("max_column_width", 40)),
                 column_spacing=int(w.get("column_spacing", 2)),
-                txt_output=bool(w.get("txt_output", True)),
+                type_output=str(w.get("type_output", "txt")),
                 header_text=str(w.get("header_text", "")),
                 loop=self.loop,
                 sio=sio,
@@ -111,9 +111,16 @@ class DiscordEngine:
         logger.info("Engine: Shutting down...")
         
         if self.client and not self.client.is_closed():
-            await self.client.close()
+            try:
+                await self.client.close()
+                logger.debug("Engine: Discord client closed.")
+            except Exception as e:
+                logger.error(f"Engine: Error closing client: {e}")
         
-        await stop_web_server()
+        try:
+            await stop_web_server()
+        except Exception as e:
+            logger.error(f"Engine: Error during server shutdown: {e}")
         
         # Zrušení všech visících tasků
         tasks = [t for t in asyncio.all_tasks(self.loop) if t is not asyncio.current_task()]
