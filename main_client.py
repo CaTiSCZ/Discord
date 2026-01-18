@@ -10,6 +10,7 @@ from channel_watcher import ChannelWatcher
 from keyboard_listener import KeyboardListener
 from web.server import sio, start_web_server, stop_web_server
 from logger import setup_logger
+from dispatcher import dispatcher
 
 logger = setup_logger("Engine", level=logging.DEBUG)
 CONFIG_FILE = "config.json"
@@ -47,30 +48,12 @@ class DiscordEngine:
             logger.info(f"Start watcher: [{comment}] (ID: {channel_id})")
             
             # Vytvoření instance watcheru
-            watcher = ChannelWatcher(
-                client=self.client,
-                channel_id=int(w.get("channel_id", 0)),
-                file_path=str(w.get("file_path", "output.txt")),
-                last_id_file=str(w.get("last_id_file", "last_id.txt")),
-                socket_panel=str(w.get("socket_panel", "panel-a")),
-                interval=int(w.get("interval", 10)),
-                history_limit=int(w.get("history_limit", 10)),
-                show_author_mode=str(w.get("show_author_mode", "both")),
-                ignore_mode=w.get("ignore_mode"),
-                manual_clear=bool(w["manual_clear"]),
-                max_rows_per_column=int(w.get("max_rows_per_column", 9)),
-                max_column_width=int(w.get("max_column_width", 40)),
-                column_spacing=int(w.get("column_spacing", 2)),
-                type_output=str(w.get("type_output", "txt")),
-                header_text=str(w.get("header_text", "")),
-                loop=self.loop,
-                sio=sio,
-            )
+            watcher = ChannelWatcher(self.client, self.config, sio)
+
             logger.debug(f"Watcher created: [{comment}] (ID: {watcher.channel_id}) \n\tpanel: {watcher.socket_panel}, file: {watcher.file_path}\n\tClient: {self.client} ({watcher.client})")
             # REGISTRACE CALLBACKU (Důležité!)
-            # Když se na klávesnici zmáčkne klávesa, watcher dostane šanci reagovat
-            if self.kb_listener:
-                self.kb_listener.register_callback(watcher.on_keypress)
+            if self.kb_listener and w.get("manual_clear", True):
+                self.kb_listener.register_callback(watcher.clear_content)
 
             # Spuštění watcheru jako asynchronní task
             self.loop.create_task(watcher.run())
@@ -96,6 +79,14 @@ class DiscordEngine:
             # Teprve teď, když je bot READY, spustíme watchery
             await self._start_watchers()
             logger.debug("Watchers started after bot login.")
+        @self.client.event
+        async def on_message(message):
+            if message.author == self.client.user:
+                return   
+            await dispatcher.dispatch_discord(message)
+        @self.client.event
+        async def on_message_edit(before, after):
+            await dispatcher.dispatch_discord_edit(after)
         
         try:
             self.loop.create_task(start_web_server())

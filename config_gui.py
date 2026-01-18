@@ -21,18 +21,18 @@ DEFAULT_WATCHER = {
     "comment": "",
     "channel_id": "",
     "file_path": "output.txt",
-    "last_id_file": "last_id.txt",
     "socket_panel": "panel-a",
+    "image_panel": "panel-o",
     "interval": 10,
-    "history_limit": 10,
     "show_author_mode": "both",
     "ignore_mode": None,
     "manual_clear": False,
-    "type_output": "txt",
+    "type_output": "socket",
     "max_rows_per_column": 9,
     "max_column_width": 40,
     "header_text": "",
-    "column_spacing": 2
+    "column_spacing": 2,
+    "gui_watcher": False,
 }
 
 def set_widget_state(widget, enable=False):
@@ -286,18 +286,13 @@ class ConfigGUI:
         self.watcher_vars[idx]["channel_id"] = var_cid
         ttk.Entry(row_id, textvariable=var_cid, width=20).pack(side="left", expand=True, padx=5)
 
-        # File Path & Last ID File
+        # File Path 
         ttk.Label(row_id, text="Output File:", width=10).pack(side="left", padx=(10,0))
         var_path = tk.StringVar(value=watcher.get("file_path", "output.txt"))
         self.watcher_vars[idx]["file_path"] = var_path
         ttk.Entry(row_id, textvariable=var_path, width=20).pack(side="left", expand=True, padx=5)
-        # Last ID File
-        ttk.Label(row_id, text="Last ID File:", width=10).pack(side="left", padx=(10,0))
-        var_lastid = tk.StringVar(value=watcher.get("last_id_file", "last_id.txt"))
-        self.watcher_vars[idx]["last_id_file"] = var_lastid
-        ttk.Entry(row_id, textvariable=var_lastid, width=20).pack(side="left", expand=True, padx=5)
 
-        #interval, history limit, rows per column, column width
+        #interval, rows per column, column width
         row_limits = ttk.Frame(details_frame)
         row_limits.pack(fill="x", padx=5, pady=2)
         #interval
@@ -305,11 +300,6 @@ class ConfigGUI:
         var_interval = tk.IntVar(value=watcher.get("interval", 10))
         self.watcher_vars[idx]["interval"] = var_interval
         ttk.Entry(row_limits, textvariable=var_interval, width=5).pack(side="left", padx=5)
-        # History Limit
-        ttk.Label(row_limits, text="History Limit:").pack(side="left")
-        var_history = tk.IntVar(value=watcher.get("history_limit", 100))
-        self.watcher_vars[idx]["history_limit"] = var_history
-        ttk.Entry(row_limits, textvariable=var_history, width=5).pack(side="left", padx=5)
         # Rows per Column
         ttk.Label(row_limits, text="Rows/Column:").pack(side="left", padx=(10,0))
         var_rows = tk.IntVar(value=watcher.get("max_rows_per_column", 9))
@@ -322,20 +312,25 @@ class ConfigGUI:
         ttk.Entry(row_limits, textvariable=var_colwidth, width=5).pack(side="left", padx=5)
         # Ignore Mode & Show Author
         row_modes = ttk.Frame(details_frame)
-
         row_modes.pack(fill="x", padx=5, pady=2)
         # Ignore Mode
         ttk.Label(row_modes, text="Ignore Mode:").pack(side="left")
         var_ignore = tk.StringVar(value=str(watcher.get("ignore_mode", "None")))
         self.watcher_vars[idx]["ignore_mode"] = var_ignore
-        ignore_combo = ttk.Combobox(row_modes, textvariable=var_ignore, values=["None", "bot", "human"], width=12)
+        ignore_combo = ttk.Combobox(row_modes, textvariable=var_ignore, values=["None", "bot", "human"], width=10)
         ignore_combo.pack(side="left", padx=5)
         # Show Author
         ttk.Label(row_modes, text="Show Author:").pack(side="left", padx=(10,0))
         var_show_author = tk.StringVar(value=str(watcher.get("show_author_mode", "both")))
         self.watcher_vars[idx]["show_author"] = var_show_author
-        author_combo = ttk.Combobox(row_modes, textvariable=var_show_author, values=["both", "human", "bot", "None"], width=12)
+        author_combo = ttk.Combobox(row_modes, textvariable=var_show_author, values=["both", "human", "bot", "None"], width=10)
         author_combo.pack(side="left", padx=5)
+
+        ttk.Label(row_modes, text="Type Output:").pack(side="left", padx=(10,0))
+        var_type_output = tk.StringVar(value=watcher.get("type_output", "socket"))
+        self.watcher_vars[idx]["type_output"] = var_type_output
+        type_combo = ttk.Combobox(row_modes, textvariable=var_type_output, values=["socket", "txt", "both"], width=10)
+        type_combo.pack(side="left", padx=5)
 
         # Header Text
         row_header = ttk.Frame(details_frame)
@@ -348,18 +343,18 @@ class ConfigGUI:
         ttk.Label(row_header, text="Socket Panel:").pack(side="left", padx=(10,0))
         var_panel = tk.StringVar(value=watcher.get("socket_panel", "panel-a"))
         self.watcher_vars[idx]["socket_panel"] = var_panel
-        panel_combo = ttk.Combobox(row_header, textvariable=var_panel, values=["panel-a", "panel-b"], width=10)
+        panel_combo = ttk.Combobox(row_header, textvariable=var_panel, values=["panel-a", "panel-b", "panel-c", "panel-d", "panel-o"], width=10)
         panel_combo.pack(side="left", padx=5)
 
-        ttk.Label(row_header, text="Type Output:").pack(side="left", padx=(10,0))
-        var_type_output = tk.StringVar(value=watcher.get("type_output", "txt"))
-        self.watcher_vars[idx]["type_output"] = var_type_output
-        type_combo = ttk.Combobox(row_header, textvariable=var_type_output, values=["txt", "html", "socket"], width=10)
-        type_combo.pack(side="left", padx=5)
+        ttk.Label(row_header, text="Image panel:").pack(side="left", padx=(10,0))
+        var_image_panel = tk.StringVar(value=watcher.get("image_panel", "panel-o"))
+        self.watcher_vars[idx]["image_panel"] = var_image_panel
+        image_combo = ttk.Combobox(row_header, textvariable=var_image_panel, values=["panel-a", "panel-b", "panel-c", "panel-d", "panel-o"], width=10)
+        image_combo.pack(side="left", padx=5)
 
         
 
-        # Další nastavení (Txt Output, Manual Clear atd.)
+        # Další nastavení (Manual Clear atd.)
         row_opts = ttk.Frame(details_frame)
         row_opts.pack(fill="x", padx=5, pady=2)
 
@@ -367,6 +362,10 @@ class ConfigGUI:
         self.watcher_vars[idx]["manual_clear"] = var_clear
         ttk.Checkbutton(row_opts, text="Manual Clear", variable=var_clear).pack(side="left", padx=5)
         
+        var_gui = tk.BooleanVar(value=watcher.get("gui_watcher", False))
+        self.watcher_vars[idx]["gui_watcher"] = var_gui
+        ttk.Checkbutton(row_opts, text="GUI Watcher", variable=var_gui).pack(side="left", padx=5)
+
         self.lockable[f"watcher_{idx}"] = watcher_wrapper
         # 3. NASTAVENÍ POČÁTEČNÍ VIDITELNOSTI
         self.toggle_watcher_visibility(enabled_var, details_frame)
@@ -427,18 +426,18 @@ class ConfigGUI:
                     "comment": get_str("comment", ""),
                     "channel_id": get_str("channel_id", ""),
                     "file_path": get_str("file_path", "output.txt"),
-                    "last_id_file": get_str("last_id_file", "last_id.txt"),
                     "socket_panel": get_str("socket_panel", "panel-a"),
+                    "image_panel": get_str("image_panel", "panel-o"),
                     "interval": get_int("interval", 10),
-                    "history_limit": get_int("history_limit", 10),
                     "show_author_mode": get_combo("show_author", "both"),
                     "ignore_mode": get_combo("ignore_mode", None),
                     "manual_clear": get_bool("manual_clear", False),
-                    "type_output": get_combo("type_output", "txt"),
+                    "type_output": get_combo("type_output", "socket"),
                     "header_text": get_str("header_text", ""),
                     "max_rows_per_column": get_int("max_rows_per_column", 9),
                     "max_column_width": get_int("max_column_width", 40),
-                    "column_spacing": int(w.get("column_spacing", 2))
+                    "column_spacing": int(w.get("column_spacing", 2)),
+                    "gui_watcher": get_bool("gui_watcher", False),
                 }
                 clean_watchers.append(clean)
             self.config["watchers"] = clean_watchers
