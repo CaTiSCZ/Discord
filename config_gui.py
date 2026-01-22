@@ -112,9 +112,16 @@ class ConfigGUI:
         self.token_entry.insert(0, self.config.get("TOKEN", ""))
         self.lockable["token"] = self.token_entry
 
-        # BUTTONS (pod tokenem)
+        # BUTTONS (pod tokenem)       
         btn_frame = tk.Frame(root)
         btn_frame.pack(pady=5)
+        tk.Label(btn_frame, text="Socket:").pack(side=tk.LEFT, padx=(0, 2))
+        self.conn_canvas = tk.Canvas(btn_frame, width=16, height=16, highlightthickness=0)
+        self.conn_canvas.pack(side=tk.LEFT, padx=5)
+        self.conn_dot = self.conn_canvas.create_oval(2, 2, 14, 14, fill="red")
+        dispatcher.set_connection_callback(self.update_connection_led)
+
+        ttk.Separator(btn_frame, orient='vertical').pack(side=tk.LEFT, padx=10, fill='y')
         addW = tk.Button(btn_frame, text="Add Watcher", command=self.add_watcher)
         addW.pack(side="left", padx=5)
         saveBtn = tk.Button(btn_frame, text="Save Configuration", command=self.save_config)
@@ -192,6 +199,12 @@ class ConfigGUI:
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
 
+    def update_connection_led(self, is_connected):
+        """Změní barvu kolečka na základě stavu."""
+        color = "green" if is_connected else "red"
+        # Protože tohle může přijít z async vlákna, použijeme after pro bezpečný update GUI
+        self.root.after(0, lambda: self.conn_canvas.itemconfig(self.conn_dot, fill=color))
+
     # ----------------------------------------------------------------
     def load_config(self):
         if not os.path.exists(CONFIG_FILE):
@@ -242,9 +255,27 @@ class ConfigGUI:
             frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
             text = tk.Text(frame, height=10, width=30, wrap='word')
             text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            self.gui_texts[gui_id] = text
+            scroll = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
+            scroll.pack(side=tk.LEFT, fill="y")
+            text.configure(yscrollcommand=scroll.set)
+            
+            # --- Logika pro Enter a Shift+Enter ---
+            def handle_return(event, gid=gui_id):
+                # event.state & 0x1 kontroluje, zda je držen Shift
+                if not (event.state & 0x1):
+                    # Pouhý Enter -> Odeslat
+                    self.send_gui_message(gid)
+                    return "break" # Zabrání vložení nového řádku do pole
+                # Shift + Enter -> Tkinter standardně vloží nový řádek (nevracíme break)
+                return None
+
+            # Nabindování na konkrétní textové pole
+            text.bind("<Return>", handle_return)
+
             btn_send = tk.Button(frame, text="Odeslat", command=lambda id=gui_id: self.send_gui_message(id))
             btn_send.pack(side=tk.RIGHT, padx=5)
-            self.gui_texts[gui_id] = text
+            
 
     def toggle_watcher_visibility(self, var_enabled, details_frame):
             """Schová nebo zobrazí detaily watcheru."""

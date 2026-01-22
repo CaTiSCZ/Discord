@@ -55,6 +55,14 @@ html, body {
   height: auto;
   max-height: 1434px;
 }
+#panel-o {
+  top: 2px;
+  left: 2600px;
+  width: auto;
+  max-width: 2556px;
+  height: auto;
+  max-height: 1434px;
+}
 /* Nadpis */
 .panel h2 {
   margin: 0 0 8px 0;

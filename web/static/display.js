@@ -7,9 +7,9 @@ socket.on("connect", () => {
 
 // Zpracování nové zprávy (odpovídá tvému ws.onmessage)
 socket.on("new_message", (data) => {
-  // Předpokládáme, že v data.channel_id posíláš "panel-a" nebo "panel-b"
+  // Předpokládáme, že v data.panel posíláš "panel-a" nebo "panel-b"
   // Pokud tam posíláš čísla, stačí v configu nastavit ID panelu správně
-  const panelId = data.channel_id + "-content";
+  const panelId = data.panel + "-content";
   const el = document.getElementById(panelId);
   
   if (el) {
@@ -25,7 +25,7 @@ socket.on("new_message", (data) => {
 
 // Zpracování vymazání (clear_messages)
 socket.on("clear_messages", (data) => {
-  const panelId = data.channel_id + "-content";
+  const panelId = data.panel + "-content";
   const el = document.getElementById(panelId);
   if (el) {
     el.innerHTML = "";

@@ -10,6 +10,16 @@ class MessageDispatcher:
         self._watchers = {}
         self.connection_callback = None
 
+    def set_connection_callback(self, callback):
+        """GUI si sem zaregistruje svou funkci pro změnu barvy kolečka."""
+        self.connection_callback = callback
+
+    async def update_connection_status(self, is_connected):
+        """Tuto metodu volá server."""
+        if self.connection_callback:
+            # Voláme callback v GUI
+            self.connection_callback(is_connected)
+        
     def register(self, channel_id, watcher_instance):
         """Zaregistruje watcher k odběru zpráv pro konkrétní ID kanálu."""
         cid = str(channel_id)
