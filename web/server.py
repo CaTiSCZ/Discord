@@ -9,6 +9,7 @@ import uvicorn
 import logging
 import sys
 import os
+from dispatcher import dispatcher
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -59,11 +60,13 @@ async def connect(sid, environ):
     # Teď bude log vypadat mnohem lépe
     logger.info(f"Connection opened: {client_name} ")
     logger.debug(f"Technical SID: {sid}, (IP: {ip}), User-Agent: {user_agent}")
+    await dispatcher.update_connection_status(True)
 
 @sio.event
 async def disconnect(sid):
     logger.info(f"Connection closed")
     logger.debug(f"Disconnected: {sid}")
+    await dispatcher.update_connection_status(False)
 
 # --- Spouštěcí funkce ---
 

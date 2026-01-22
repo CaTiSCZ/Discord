@@ -214,7 +214,7 @@ class ChannelWatcher:
         self.sio = sio
         
 
-        self.channel_id = str(config.get("channel_id"))
+        self.channel_id = str(config.get("channel_id", "Unknown"))
         self.socket_panel = config.get("socket_panel", "panel-a")
         self.image_panel = config.get("image_panel", self.socket_panel)
         self.file_path = config.get("file_path", "output.txt")
@@ -223,6 +223,7 @@ class ChannelWatcher:
         self.manual_clear = config.get("manual_clear", True)
         self.gui_watcher = config.get("gui_watcher", False)
         self.ignore_mode = config.get("ignore_mode", None)
+        self.show_image = config.get("show_image", False)
 
         self.formatter = MessageFormatter(self.config)
 
@@ -231,10 +232,12 @@ class ChannelWatcher:
         self._lock = asyncio.Lock()
 
         dispatcher.register(self.channel_id, self)
+        logger.debug(f"Watcher {self.channel_id} (Panel: {self.socket_panel}) vytvořen a zaregistrován.")
 
     async def start(self):
         self.running = True
-        asyncio.create_task(self._ttl_loop())
+        if not self.manual_clear:
+            asyncio.create_task(self._ttl_loop())
         await self._refresh_display()
         logger.info(f"Watcher pro kanál {self.channel_id} (Panel: {self.socket_panel}) spuštěn.")
 
@@ -246,7 +249,7 @@ class ChannelWatcher:
             return
         async with self._lock:
             # Cesta pro obrázky (Okamžitá)
-            if message.attachments:
+            if self.show_image and message.attachments:
                 for att in message.attachments:
                     if any(att.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', ".bmp"]):
                         await self.sio.emit("new_image", {
@@ -255,8 +258,7 @@ class ChannelWatcher:
                             "interval": self.interval
                         })
             # 1. Vyčistíme expirované zprávy
-            now = time.time()
-            self.active_messages = [m for m in self.active_messages if m["expiry"] > now]
+            self.cleanup_expired_messages()
 
             # 2. Přidáme novou zprávu
             expiry = time.time() + self.interval
@@ -265,6 +267,7 @@ class ChannelWatcher:
                 "msg_obj": message,
                 "expiry": expiry
             })
+            logger.debug(f"Nová zpráva přidána: {message.id} od {message.author} (expirace za {self.interval}s)")
             await self._refresh_display()
 
     async def on_message_edit(self, message):
@@ -288,45 +291,37 @@ class ChannelWatcher:
             mentions=[],
             embeds=[]
         )
+        logger.debug(f"Manuální vstup přijat od {author}: {text}")
         await self.on_new_message(mock_msg)
 
     async def clear_content(self):
         """Logika pro klávesu 'd' (Smart Clear)."""
-        async with self._lock:
-            now = time.time()
-            # Najdeme expirované zprávy (kromě úplně poslední)
-            exp_msgs = [m for m in self.active_messages if m["expiry"] < now]
-            
-            if not exp_msgs:
-                logger.warning("Není co mazat (žádná zpráva ještě neexpirovala).")
-                return
-            
-            # Odfiltrujeme vše expirované
-            self.active_messages = [m for m in self.active_messages if m["expiry"] > now]
-            
-            logger.info("Provedeno manuální promazání expirovaných zpráv.")
-            await self._refresh_display()
-
-    def _cleanup_expired(self):
-        """Interní úklid expirovaných zpráv."""
-        now = time.time()
-        if self.manual_clear:
-            return  
+        removed_count = self.cleanup_expired_messages()
+        if removed_count == 0:
+            logger.warning("Není co mazat (žádná zpráva ještě neexpirovala).")
         else:
-            self.active_messages = [m for m in self.active_messages if m["expiry"] > now]
+            await self._refresh_display()
+            logger.info(f"Provedeno manuální promazání {removed_count} expirovaných zpráv.")
+
+    def cleanup_expired_messages(self):
+        """Filtruje expirované zprávy z active_messages a vrací počet odstraněných."""
+        now = time.time()
+        old_count = len(self.active_messages)
+        self.active_messages = [m for m in self.active_messages if m["expiry"] > now]
+        return old_count - len(self.active_messages)
 
     async def _ttl_loop(self):
         """Smyčka, která hlídá automatické mazání po čase."""
         while self.running:
-            old_count = len(self.active_messages)
-            self._cleanup_expired()
-            if len(self.active_messages) != old_count:
+            removed_count = self.cleanup_expired_messages()
+            if removed_count > 0:
                 await self._refresh_display()
             await asyncio.sleep(1)
 
     async def _refresh_display(self):
         """Sestavení zpráv a odeslání do OBS/Souboru."""
         # Získáme jen objekty zpráv pro formatter
+        logger.debug(f"Watcher {self.channel_id}: Obnovuje zobrazení s {len(self.active_messages)} aktivními zprávami.")
         objs = [m["msg_obj"] for m in self.active_messages]
         
         # Formatter vrátí pole řádků
@@ -338,6 +333,7 @@ class ChannelWatcher:
                 "panel": self.socket_panel,
                 "lines": formatted_lines
             })
+            logger.debug(f"Watcher {self.channel_id}: Odesláno {len(formatted_lines)} řádků na panel {self.socket_panel} přes Socket.io.")
 
         # 2. Zápis do souboru (pokud je potřeba)
         if self.type_output in ("txt", "both"): 

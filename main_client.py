@@ -7,7 +7,6 @@ import os
 import logging
 
 from channel_watcher import ChannelWatcher
-from keyboard_listener import KeyboardListener
 from web.server import sio, start_web_server, stop_web_server
 from logger import setup_logger
 from dispatcher import dispatcher
@@ -37,26 +36,27 @@ class DiscordEngine:
         if not self.config.get("watchers"):
             logger.warning("No watchers in config.")
             return
-
+        self.watchers = []
         for w in self.config["watchers"]:
             comment = w.get("comment", "No description")
             channel_id = w.get("channel_id")
             if not w.get("enabled", True):
                 logger.debug(f"Skipping watcher: [{comment}] (ID: {channel_id})")
                 continue
-            
-            logger.info(f"Start watcher: [{comment}] (ID: {channel_id})")
-            
             # Vytvoření instance watcheru
-            watcher = ChannelWatcher(self.client, self.config, sio)
-
+            watcher = ChannelWatcher(self.client, w, sio)
             logger.debug(f"Watcher created: [{comment}] (ID: {watcher.channel_id}) \n\tpanel: {watcher.socket_panel}, file: {watcher.file_path}\n\tClient: {self.client} ({watcher.client})")
-            # REGISTRACE CALLBACKU (Důležité!)
-            if self.kb_listener and w.get("manual_clear", True):
-                self.kb_listener.register_callback(watcher.clear_content)
+            self.watchers.append(watcher)
 
-            # Spuštění watcheru jako asynchronní task
-            self.loop.create_task(watcher.run())
+        start_tasks = [
+            watcher.start() 
+            for watcher in self.watchers 
+            if watcher.channel_id and not watcher.gui_watcher
+        ]
+
+        if start_tasks:
+            await asyncio.gather(*start_tasks)
+            logger.info(f"Start watcher: [{comment}] (ID: {channel_id})")
 
     async def run_async(self):
         """Hlavní asynchronní workflow."""
@@ -127,10 +127,6 @@ class DiscordEngine:
         """Vstupní bod pro thread (z GUI nebo Mainu)."""
         self.loop = loop
         asyncio.set_event_loop(self.loop)
-        
-        # Inicializace klávesnice
-        self.kb_listener = KeyboardListener(self.loop)
-        self.kb_listener.start()
         
         # Spuštění asynchronního světa
         try:

@@ -10,7 +10,8 @@ import asyncio
 import logging
 #from keyboard_listener import KeyboardListener
 import main_client
-from logger import Logging, CallbackHandler, setup_logger
+from logger import setup_logger, CallbackHandler, Logging
+from dispatcher import dispatcher
 #from web.server import start_web_server, stop_web_server
 
 
@@ -33,6 +34,7 @@ DEFAULT_WATCHER = {
     "header_text": "",
     "column_spacing": 2,
     "gui_watcher": False,
+    "show_image": False,
 }
 
 def set_widget_state(widget, enable=False):
@@ -85,7 +87,7 @@ class ConfigGUI:
         
         self.setup_UI()
         self.watcher_vars = [{} for _ in self.config.get("watchers", [])]
-        
+        self.gui_texts = {}
         
            
 
@@ -119,8 +121,8 @@ class ConfigGUI:
         saveBtn.pack(side="left", padx=5)
         run = tk.Button(btn_frame, text="Run Bot", command=self.run_bot)
         run.pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Delete Files (d)", command=self.delete_files).pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Quit Bot (q)", command=self.quit_bot).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Delete Files (d)", command=self.safe_dispatch_clear).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Quit Bot (q)", command=self.stop_bot).pack(side="left", padx=5)
         #tk.Button(btn_frame, text="GUI size", command=self.gui_size).pack(side="left", padx=5)
         self.lockable["ADD"] = addW
         self.lockable["SAVE"] = saveBtn
@@ -164,7 +166,9 @@ class ConfigGUI:
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-
+        # --- GUI WATCHERS ---
+        self.gui_frame = ttk.LabelFrame(self.root, text="GUI Watchers", padding="5")
+        self.gui_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
     def gui_size(self):
         screen_width = self.root.winfo_screenwidth()
@@ -178,8 +182,6 @@ class ConfigGUI:
         #self.root.geometry(f"{width}x{height}+{x}+{y}")
         #print(f"Screen size: {screen_width}x{screen_height}, GUI size: {width}x{height} at ({x},{y})")
 
-        
-
     def append_log(self, text):
         # Bezpečný zápis do GUI z jakéhokoli vlákna
         self.root.after(0, self._actual_write, text)
@@ -189,16 +191,6 @@ class ConfigGUI:
         self.log_text.insert(tk.END, text + "\n")
         self.log_text.see(tk.END)
         self.log_text.config(state=tk.DISABLED)
-
-    # ----------------------------------------------------------------
-    def on_key_press(self, event):
-        """Handler pro stisk klávesy v GUI okně."""
-        focus = self.root.focus_get()
-        if not isinstance(focus, (tk.Entry, tk.Text)):
-            if event.char.lower() == 'd':
-                self.delete_files()
-            elif event.char.lower() == 'q':
-                self.quit_bot()
 
     # ----------------------------------------------------------------
     def load_config(self):
@@ -230,9 +222,29 @@ class ConfigGUI:
             w.destroy()
         self.lockable = {k: v for k, v in self.lockable.items() if not k.startswith("watcher_")}
         self.watcher_vars = []
+        self.gui_watcher_list = []
+        gui_id = 123450
         for idx, watcher in enumerate(self.config["watchers"]):
             self.watcher_vars.append({})
+            if watcher.get("gui_watcher", False):
+                watcher["channel_id"] = str(gui_id)
+                self.gui_watcher_list.append((gui_id, watcher.get("comment", ""), idx))
+                gui_id += 1
             self.render_one_watcher(self.scroll_frame, idx, watcher)
+        self.render_gui_watchers()
+
+    def render_gui_watchers(self):
+        for w in self.gui_frame.winfo_children():
+            w.destroy()
+        self.gui_texts = {}
+        for gui_id, comment, watcher_idx in self.gui_watcher_list:
+            frame = ttk.LabelFrame(self.gui_frame, text=f"{gui_id}: {comment}")
+            frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+            text = tk.Text(frame, height=10, width=30, wrap='word')
+            text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            btn_send = tk.Button(frame, text="Odeslat", command=lambda id=gui_id: self.send_gui_message(id))
+            btn_send.pack(side=tk.RIGHT, padx=5)
+            self.gui_texts[gui_id] = text
 
     def toggle_watcher_visibility(self, var_enabled, details_frame):
             """Schová nebo zobrazí detaily watcheru."""
@@ -282,7 +294,7 @@ class ConfigGUI:
         row_id = ttk.Frame(details_frame)
         row_id.pack(fill="x", padx=5, pady=2)
         ttk.Label(row_id, text="Channel ID:", width=10).pack(side="left")
-        var_cid = tk.IntVar(value=watcher.get("channel_id", ""))
+        var_cid = tk.StringVar(value=watcher.get("channel_id", ""))
         self.watcher_vars[idx]["channel_id"] = var_cid
         ttk.Entry(row_id, textvariable=var_cid, width=20).pack(side="left", expand=True, padx=5)
 
@@ -352,8 +364,6 @@ class ConfigGUI:
         image_combo = ttk.Combobox(row_header, textvariable=var_image_panel, values=["panel-a", "panel-b", "panel-c", "panel-d", "panel-o"], width=10)
         image_combo.pack(side="left", padx=5)
 
-        
-
         # Další nastavení (Manual Clear atd.)
         row_opts = ttk.Frame(details_frame)
         row_opts.pack(fill="x", padx=5, pady=2)
@@ -364,10 +374,15 @@ class ConfigGUI:
         
         var_gui = tk.BooleanVar(value=watcher.get("gui_watcher", False))
         self.watcher_vars[idx]["gui_watcher"] = var_gui
-        ttk.Checkbutton(row_opts, text="GUI Watcher", variable=var_gui).pack(side="left", padx=5)
+        ttk.Checkbutton(row_opts, text="GUI Watcher", variable=var_gui, command=lambda idx=idx, var=var_gui: self.update_gui_watcher(idx, var)).pack(side="left", padx=5)
 
+        var_show_image = tk.BooleanVar(value=watcher.get("show_image", False))
+        self.watcher_vars[idx]["show_image"] = var_show_image
+        ttk.Checkbutton(row_opts, text="Show Image", variable=var_show_image).pack(side="left", padx=5)
+
+        # 3. REGISTRACE DO LOCKABLE
         self.lockable[f"watcher_{idx}"] = watcher_wrapper
-        # 3. NASTAVENÍ POČÁTEČNÍ VIDITELNOSTI
+        # 4. NASTAVENÍ POČÁTEČNÍ VIDITELNOSTI
         self.toggle_watcher_visibility(enabled_var, details_frame)
         
     # ----------------------------------------------------------------
@@ -438,6 +453,7 @@ class ConfigGUI:
                     "max_column_width": get_int("max_column_width", 40),
                     "column_spacing": int(w.get("column_spacing", 2)),
                     "gui_watcher": get_bool("gui_watcher", False),
+                    "show_image": get_bool("show_image", False),
                 }
                 clean_watchers.append(clean)
             self.config["watchers"] = clean_watchers
@@ -471,6 +487,7 @@ class ConfigGUI:
     # ----------------------------------------------------------------
     def stop_bot(self, wait_secs: float = 1.0):
         if not self.bot_running:
+            self.logger.warning("Bot is not running.")
             return
 
         self.logger.debug("Stoping bot...")
@@ -489,40 +506,38 @@ class ConfigGUI:
             if widget: 
                 set_widget_state(widget, enable=True)
 
-
-    # ----------------------------------------------------------------
-    def send_key_to_bot(self, key: str):
-        """Emuluj stisk klávesy -> pošli do KeyboardListener (pokud běží)."""
-        if not self.engine or not self.engine.kb_listener or not self.bot_running:
-            self.logger.warning("Bot isn't running.")
-            return
-        try:
-            self.engine.kb_listener.emit_key(key)
-        except Exception as e:
-            self.logger.error(f"Key sending failed: {e}")
-
-    # ----------------------------------------------------------------
-    def delete_files(self):
-        # pokud běží bot, emuluj 'd' (watchery tak smažou svůj obsah)
-        if self.bot_running:
-            self.send_key_to_bot("d")
-            self.logger.info("Sent key 'd' to watchers.")
-            return
-
-        # fallback: mazání souborů lokálně
-        if not self.bot_running:
-            self.logger.warning("Start bot for delete files.")
-            return
-
-    # ----------------------------------------------------------------
-    def quit_bot(self):
-        self.logger.debug("Quit bot requested.")
-        # pokud běží bot a máme listener, pouze ho zastav a NEZAVÍREJ GUI
-        if self.bot_running:
-            self.stop_bot()
-            return
+        # ----------------------------------------------------------------
+    def on_key_press(self, event):
+        """Handler pro stisk klávesy v GUI okně."""
+        focus = self.root.focus_get()
+        if not isinstance(focus, (tk.Entry, tk.Text)):
+            key = event.char.lower()
+            if self.bot_running:
+                if key == 'q':
+                    self.stop_bot()
+                else:
+                    asyncio.run_coroutine_threadsafe(dispatcher.on_key_press(key), self.loop)
+    def safe_dispatch_clear(self):
+        if self.bot_running and self.loop:
+            asyncio.run_coroutine_threadsafe(dispatcher.dispatch_clear(), self.loop)
         else:
-            self.logger.info("Bot isn't running.")
+            self.logger.warning("Bot not running, cannot dispatch clear.")
+
+    def update_gui_watcher(self, idx, var):
+        self.config["watchers"][idx]["gui_watcher"] = var.get()
+        self.render_watchers()
+
+    def send_gui_message(self, gui_id):
+        text = self.gui_texts[gui_id].get("1.0", tk.END).strip()
+        if text:
+            self.safe_dispatch_manual(str(gui_id), text, "GUI")
+            self.gui_texts[gui_id].delete("1.0", tk.END)
+
+    def safe_dispatch_manual(self, target_id, text, author):
+        if self.bot_running and self.loop:
+            asyncio.run_coroutine_threadsafe(dispatcher.dispatch_manual(target_id, text, author), self.loop)
+        else:
+            self.logger.warning("Bot not running, cannot dispatch manual message.")
 
     # ----------------------------------------------------------------
     def on_close(self):
