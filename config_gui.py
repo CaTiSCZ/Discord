@@ -88,15 +88,13 @@ class ConfigGUI:
         self.setup_UI()
         self.watcher_vars = [{} for _ in self.config.get("watchers", [])]
         self.gui_texts = {}
-        
-           
 
         # zavěsit handler pro kliknutí na křížek okna
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
         
         # Přidat key bindings pro 'd' a 'q' (když je GUI aktivní okno)
         self.root.bind('<Key>', self.on_key_press)
-        #self.root.bind('<q>', lambda e: self.on_key_press('q'))
+        self.root.bind("<Button-1>", lambda e: self.root.focus_set() if not isinstance(e.widget, (tk.Entry, tk.Text)) else None)
 
         self.logger.debug("GUI initialized.")
         self.render_watchers()
@@ -266,6 +264,7 @@ class ConfigGUI:
                 if not (event.state & 0x1):
                     # Pouhý Enter -> Odeslat
                     self.send_gui_message(gid)
+                    self.root.focus_set()
                     return "break" # Zabrání vložení nového řádku do pole
                 # Shift + Enter -> Tkinter standardně vloží nový řádek (nevracíme break)
                 return None
@@ -395,7 +394,7 @@ class ConfigGUI:
         image_combo = ttk.Combobox(row_header, textvariable=var_image_panel, values=["panel-a", "panel-b", "panel-c", "panel-d", "panel-o"], width=10)
         image_combo.pack(side="left", padx=5)
 
-        # Další nastavení (Manual Clear atd.)
+        # Další nastavení
         row_opts = ttk.Frame(details_frame)
         row_opts.pack(fill="x", padx=5, pady=2)
 

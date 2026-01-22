@@ -118,11 +118,11 @@ class MessageFormatter:
             else:
                 pre, post = line, ""
             split_rolls.append((pre, post))
-            max_len = max(max_len, MessageFormatter.visible_len(pre))
+            max_len = max(max_len, self.visible_len(pre))
 
         roll_lines = []
         for idx, (pre, post) in enumerate(split_rolls, 1):
-            pad_len = max_len - MessageFormatter.visible_len(pre)
+            pad_len = max_len - self.visible_len(pre)
             if post:
                 roll_lines.append(f"{idx:02d}. {pre}{'&nbsp;'*pad_len} {post}".rstrip())
             else:
@@ -224,6 +224,10 @@ class ChannelWatcher:
         self.gui_watcher = config.get("gui_watcher", False)
         self.ignore_mode = config.get("ignore_mode", None)
         self.show_image = config.get("show_image", False)
+        self.max_rows_per_column = config.get("max_rows_per_column", 9)
+        self.max_column_width = config.get("max_column_width", 40)
+        self.show_author_mode = config.get("show_author_mode", "both")
+        self.header_text = config.get("header_text", "")
 
         self.formatter = MessageFormatter(self.config)
 
@@ -238,6 +242,7 @@ class ChannelWatcher:
         self.running = True
         if not self.manual_clear:
             asyncio.create_task(self._ttl_loop())
+            logger.debug(f"Watcher pro kanál {self.channel_id} spouští TTL smyčku.")
         await self._refresh_display()
         logger.info(f"Watcher pro kanál {self.channel_id} (Panel: {self.socket_panel}) spuštěn.")
 
@@ -247,6 +252,9 @@ class ChannelWatcher:
             return
         if self.ignore_mode == "humans" and not message.author.bot:
             return
+        if message.content.startswith('!'):
+            return
+        
         async with self._lock:
             # Cesta pro obrázky (Okamžitá)
             if self.show_image and message.attachments:
@@ -318,25 +326,57 @@ class ChannelWatcher:
                 await self._refresh_display()
             await asyncio.sleep(1)
 
+
     async def _refresh_display(self):
         """Sestavení zpráv a odeslání do OBS/Souboru."""
-        # Získáme jen objekty zpráv pro formatter
         logger.debug(f"Watcher {self.channel_id}: Obnovuje zobrazení s {len(self.active_messages)} aktivními zprávami.")
-        objs = [m["msg_obj"] for m in self.active_messages]
         
-        # Formatter vrátí pole řádků
-        formatted_lines = self.formatter.format_messages(objs)
-        
+        msg_list = []
+        for m in self.active_messages:
+            msg = m["msg_obj"]
+            
+            # Získání jména hráče (mentions pro Avrae, jinak display_name)
+            if msg.author.name == "Avrae" and msg.mentions:
+                author_name = msg.mentions[0].display_name
+            else:
+                author_name = msg.author.display_name
+            
+            author_name = re.sub(r"\s*\([^)]*\)\s*$", "", author_name)
+
+            # Sběr dat z embedů
+            embeds_data = []
+            for emb in msg.embeds:
+                embeds_data.append({
+                    "title": emb.title or "",
+                    "description": emb.description or "",
+                    "fields": [{"name": f.name, "value": f.value} for f in emb.fields]
+                })
+
+            msg_list.append({
+                "author": author_name,
+                "content": msg.content,
+                "is_avrae": msg.author.name == "Avrae",
+                "embeds": embeds_data
+            })
+       
         if self.type_output in ("socket", "both"):    
             # 1. Socket vysílání (HTML/Pre formát)
             await self.sio.emit("new_message", {
                 "panel": self.socket_panel,
-                "lines": formatted_lines
+                "messages": msg_list,
+                "config": {
+                    "max_rows_per_column": self.max_rows_per_column,
+                    "max_width": self.max_column_width,
+                    "show_author": self.show_author_mode,
+                    "header_text": self.header_text
+                }
             })
-            logger.debug(f"Watcher {self.channel_id}: Odesláno {len(formatted_lines)} řádků na panel {self.socket_panel} přes Socket.io.")
+            logger.debug(f"Watcher {self.channel_id}: Emit message to panel {self.socket_panel} - Socket.io.")
 
         # 2. Zápis do souboru (pokud je potřeba)
         if self.type_output in ("txt", "both"): 
+            objs = [m["msg_obj"] for m in self.active_messages]
+            formatted_lines = self.formatter.format_messages(objs)
             self._write_to_file(formatted_lines)
 
     def _write_to_file(self, lines):

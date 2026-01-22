@@ -73,13 +73,25 @@ html, body {
 
 
 .content-area {
+    display: flex;
+    flex-direction: row;
+    gap: 40px;
     font-family: 'Courier New', Courier, monospace; /* Monospaced pro sloupce */
     white-space: pre;           /* Zásadní: zachová mezery a konce řádků z Pythonu */
     line-height: 1.2;           /* Výška řádku pro lepší čitelnost */
     font-size: 31px;
+    word-break: break-all;
     text-shadow: 1px 1px 2px black; /* Přidá stín pro lepší čitelnost na různých pozadích */
     background-color: rgba(0, 0, 0, 0.98); /* Pozadí může být černé pro kontrast */
     color: #e2e2e2;              /* Výchozí barva textu bílá */  
+}
+.msg-row {
+    display: inline-block;
+    width: 100%;
+}
+.column {
+    display: flex;
+    flex-direction: column;
 }
 
 /* Definice stylů pro tagy, které vyrobíš v normalize_line */

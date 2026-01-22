@@ -45,18 +45,18 @@ class DiscordEngine:
                 continue
             # Vytvoření instance watcheru
             watcher = ChannelWatcher(self.client, w, sio)
-            logger.debug(f"Watcher created: [{comment}] (ID: {watcher.channel_id}) \n\tpanel: {watcher.socket_panel}, file: {watcher.file_path}\n\tClient: {self.client} ({watcher.client})")
             self.watchers.append(watcher)
 
         start_tasks = [
             watcher.start() 
             for watcher in self.watchers 
-            if watcher.channel_id and not watcher.gui_watcher
         ]
 
         if start_tasks:
             await asyncio.gather(*start_tasks)
-            logger.info(f"Start watcher: [{comment}] (ID: {channel_id})")
+            type_str = "GUI/Manual" if w.gui_watcher else "Discord"
+            comment = w.get("comment", "No description")
+            logger.info(f"Start watcher: [{comment}] (ID: {w.channel_id}, type: {type_str})")
 
     async def run_async(self):
         """Hlavní asynchronní workflow."""
