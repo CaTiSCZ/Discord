@@ -37,6 +37,7 @@ class DiscordEngine:
             logger.warning("No watchers in config.")
             return
         self.watchers = []
+        comments = []
         for w in self.config["watchers"]:
             comment = w.get("comment", "No description")
             channel_id = w.get("channel_id")
@@ -46,6 +47,7 @@ class DiscordEngine:
             # Vytvoření instance watcheru
             watcher = ChannelWatcher(self.client, w, sio)
             self.watchers.append(watcher)
+            comments.append(comment)
 
         start_tasks = [
             watcher.start() 
@@ -54,9 +56,7 @@ class DiscordEngine:
 
         if start_tasks:
             await asyncio.gather(*start_tasks)
-            type_str = "GUI/Manual" if w.gui_watcher else "Discord"
-            comment = w.get("comment", "No description")
-            logger.info(f"Start watcher: [{comment}] (ID: {w.channel_id}, type: {type_str})")
+            
 
     async def run_async(self):
         """Hlavní asynchronní workflow."""

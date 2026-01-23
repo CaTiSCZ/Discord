@@ -32,20 +32,13 @@ class MessageFormatter:
                 content = self.process_roll(msg)
             else:
                 content = [self.normalize_line(l) for l in msg.content.splitlines()]
-            
+            is_bot =  msg.author.bot
             autor = re.sub(r"\s*\([^)]*\)\s*$", "", msg.author.display_name)
-            indent = '&nbsp;' * (len(autor) + 2)
-            if self.show_author_mode == "both" \
-                    or (msg.author.bot and self.show_author_mode == "bot") \
-                    or (not msg.author.bot and self.show_author_mode == "human"):
-                message.append(f"{autor}: {content[0]}")
-                for l in content[1:]:
-                    message.append(f"{indent}{l}")
-            else:
-                message.extend(content)
-            messages.extend(self.format_columns_all(message))
 
-        return messages
+            message = self.wrapping(content, is_bot, autor)
+            messages.extend(message)
+
+        return self.format_columns_all(messages)
     
     def process_roll(self, msg):
         """Rozhodne, jestli jde o single/multi roll a zavolá parser."""
@@ -80,7 +73,7 @@ class MessageFormatter:
 
         rolling_line_idx = next((i for i, l in enumerate(lines) if "Rolling" in l), 1)
         rolling_line = lines[rolling_line_idx]
-        user_text = rolling_line.split(":", 1)[0].strip() if ":" in rolling_line else ""
+        user_text = (rolling_line.split(":", 1)[0].strip() + ": ") if ":" in rolling_line else ""
 
         iter_match = re.search(r"(\d+)\s*iterations", rolling_line, re.IGNORECASE)
         num_iterations = int(iter_match.group(1)) if iter_match else 1
@@ -88,22 +81,21 @@ class MessageFormatter:
         first_roll_line = lines[rolling_line_idx + 1] if rolling_line_idx + 1 < len(lines) else ""
         adv_map = {"kh1": "adv", "kl1": "dis"}
         adv = ""
-        dice_type = first_roll_line
+        dice_type = first_roll_line.split(" ", 1)[0]
         for k, v in adv_map.items():
             if k in first_roll_line:
                 adv = v
                 dice_type = first_roll_line.replace(k, "").strip()
                 break
 
-        plural = f"{num_iterations}x " if num_iterations > 1 else ""
-        header = f"{player_name}: {plural}{dice_type}"
+        
+        header = f"{player_name}: {user_text}{num_iterations}x {dice_type}"
         if adv:
             header += f"({adv})"
         bonus_match = re.search(r"([+-]\s*\d+)", first_roll_line)
         if bonus_match:
             header += f" {bonus_match.group(1)}"
-        if user_text:
-            header += f", {user_text}"
+        
 
         raw_rolls = lines[rolling_line_idx + 1:-1] if rolling_line_idx + 1 < len(lines) else []
         max_len = 0
@@ -144,25 +136,41 @@ class MessageFormatter:
         text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
         return text
     
+    def wrapping(self, content, is_bot, autor):
+        message = []
+        wrapped_lines = []
+        indent = '&nbsp;' * (len(autor) + 2)
+        if self.show_author_mode == "both" \
+                or (is_bot and self.show_author_mode == "bot") \
+                or (not is_bot and self.show_author_mode == "human"):
+            for line in content:
+                wrapped_lines.extend(self.smart_wrap(line, (self.max_column_width - (len(autor) + 2))))
+            message.append(f"{autor}: {wrapped_lines[0]}")
+            for l in wrapped_lines[1:]:
+                message.append(f"{indent}{l}")
+        else:
+            for line in content:
+                message.extend(self.smart_wrap(line, self.max_column_width))  
+            
+        return message 
+
     def format_columns_all(self, content_lines: List[str]) -> List[str]:
         """Zformátuje řádky do column layoutu (převzato a upraveno z původního kódu)."""
-        wrapped_lines = []
+        all_lines = []
         if self.header_text:
-            wrapped_lines.append(self.header_text)
-        for line in content_lines:
-            wrapped_lines.extend(self.smart_wrap(line, self.max_column_width))
-        n = len(wrapped_lines)
+            all_lines.append(self.header_text)
+        all_lines.extend(content_lines)
+        n = len(all_lines)
         if n <= self.max_rows_per_column:
-            # Jen jeden sloupec
-            output_lines = wrapped_lines            
-            return output_lines
+            # Jen jeden sloupec           
+            return all_lines
         # Více sloupců
         num_cols = (n + self.max_rows_per_column - 1) // self.max_rows_per_column
         cols = []
         for c in range(num_cols):
             start = c * self.max_rows_per_column
             end = min(start + self.max_rows_per_column, n)
-            cols.append(wrapped_lines[start:end])
+            cols.append(all_lines[start:end])
         col_widths = [min(max(self.visible_len(line) for line in col), self.max_column_width) for col in cols]
         max_len = max(len(col) for col in cols)
         for col in cols:
@@ -174,7 +182,7 @@ class MessageFormatter:
             for col, width in zip(cols, col_widths):
                 line = col[i]
                 pad_len = width - self.visible_len(line)
-                row += line + (" " * (pad_len + self.column_spacing))
+                row += line + ('&nbsp;' * (pad_len + self.column_spacing))
             output_lines.append(row.rstrip())
         
         return output_lines
@@ -224,10 +232,8 @@ class ChannelWatcher:
         self.gui_watcher = config.get("gui_watcher", False)
         self.ignore_mode = config.get("ignore_mode", None)
         self.show_image = config.get("show_image", False)
-        self.max_rows_per_column = config.get("max_rows_per_column", 9)
-        self.max_column_width = config.get("max_column_width", 40)
-        self.show_author_mode = config.get("show_author_mode", "both")
-        self.header_text = config.get("header_text", "")
+        self.comment = config.get("comment", "uncommented")
+
 
         self.formatter = MessageFormatter(self.config)
 
@@ -244,7 +250,7 @@ class ChannelWatcher:
             asyncio.create_task(self._ttl_loop())
             logger.debug(f"Watcher pro kanál {self.channel_id} spouští TTL smyčku.")
         await self._refresh_display()
-        logger.info(f"Watcher pro kanál {self.channel_id} (Panel: {self.socket_panel}) spuštěn.")
+        logger.info(f"Watcher ({self.comment}) pro kanál {self.channel_id} (Panel: {self.socket_panel}) spuštěn.")
 
     async def on_new_message(self, message):
         """Volá se při nové zprávě z Discordu."""
@@ -329,54 +335,23 @@ class ChannelWatcher:
 
     async def _refresh_display(self):
         """Sestavení zpráv a odeslání do OBS/Souboru."""
+        # Získáme jen objekty zpráv pro formatter
         logger.debug(f"Watcher {self.channel_id}: Obnovuje zobrazení s {len(self.active_messages)} aktivními zprávami.")
+        objs = [m["msg_obj"] for m in self.active_messages]
         
-        msg_list = []
-        for m in self.active_messages:
-            msg = m["msg_obj"]
-            
-            # Získání jména hráče (mentions pro Avrae, jinak display_name)
-            if msg.author.name == "Avrae" and msg.mentions:
-                author_name = msg.mentions[0].display_name
-            else:
-                author_name = msg.author.display_name
-            
-            author_name = re.sub(r"\s*\([^)]*\)\s*$", "", author_name)
-
-            # Sběr dat z embedů
-            embeds_data = []
-            for emb in msg.embeds:
-                embeds_data.append({
-                    "title": emb.title or "",
-                    "description": emb.description or "",
-                    "fields": [{"name": f.name, "value": f.value} for f in emb.fields]
-                })
-
-            msg_list.append({
-                "author": author_name,
-                "content": msg.content,
-                "is_avrae": msg.author.name == "Avrae",
-                "embeds": embeds_data
-            })
-       
+        # Formatter vrátí pole řádků
+        formatted_lines = self.formatter.format_messages(objs)
+        
         if self.type_output in ("socket", "both"):    
             # 1. Socket vysílání (HTML/Pre formát)
             await self.sio.emit("new_message", {
                 "panel": self.socket_panel,
-                "messages": msg_list,
-                "config": {
-                    "max_rows_per_column": self.max_rows_per_column,
-                    "max_width": self.max_column_width,
-                    "show_author": self.show_author_mode,
-                    "header_text": self.header_text
-                }
+                "lines": formatted_lines
             })
-            logger.debug(f"Watcher {self.channel_id}: Emit message to panel {self.socket_panel} - Socket.io.")
+            logger.debug(f"Watcher {self.channel_id}: Odesláno {len(formatted_lines)} řádků na panel {self.socket_panel} přes Socket.io.")
 
         # 2. Zápis do souboru (pokud je potřeba)
         if self.type_output in ("txt", "both"): 
-            objs = [m["msg_obj"] for m in self.active_messages]
-            formatted_lines = self.formatter.format_messages(objs)
             self._write_to_file(formatted_lines)
 
     def _write_to_file(self, lines):
