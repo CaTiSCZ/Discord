@@ -94,6 +94,7 @@ class ConfigGUI:
         # Přidat key bindings pro 'd' a 'q' (když je GUI aktivní okno)
         self.root.bind('<Key>', self.on_key_press)
         self.root.bind("<Button-1>", lambda e: self.root.focus_set() if not isinstance(e.widget, (tk.Entry, tk.Text)) else None)
+        self.root.bind_class("TCombobox", "<MouseWheel>", lambda event: "break")
 
         self.logger.debug("GUI initialized.")
         self.render_watchers()
@@ -153,6 +154,7 @@ class ConfigGUI:
         log_scroll = ttk.Scrollbar(self.left_panel, orient="vertical", command=self.log_text.yview)
         log_scroll.grid(row=0, column=1, sticky="ns")
         self.log_text.configure(yscrollcommand=log_scroll.set)
+        self.log_text.bind("<MouseWheel>", lambda e: self.log_text.yview_scroll(int(-1*(e.delta/120)), "units"))
 
         # --- PRAVÁ STRANA (WATCHERY) ---
         self.right_panel = ttk.LabelFrame(self.main_frame, text="Watchers Configuration", padding="5")
@@ -162,6 +164,8 @@ class ConfigGUI:
         self.canvas = tk.Canvas(self.right_panel, highlightthickness=0, width=600) # Pevnější šířka pro pravou stranu
         self.scrollbar = ttk.Scrollbar(self.right_panel, orient="vertical", command=self.canvas.yview)
         self.scroll_frame = ttk.Frame(self.canvas)
+        self.canvas.bind('<Enter>', lambda _: self.canvas.bind_all("<MouseWheel>", self._on_mousewheel))
+        self.canvas.bind('<Leave>', lambda _: self.canvas.unbind_all("<MouseWheel>"))
 
         self.scroll_frame.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
@@ -183,8 +187,11 @@ class ConfigGUI:
         y = int((screen_height - height) / 2)
         
         self.root.state('zoomed')
-        #self.root.geometry(f"{width}x{height}+{x}+{y}")
-        #print(f"Screen size: {screen_width}x{screen_height}, GUI size: {width}x{height} at ({x},{y})")
+
+    def _on_mousewheel(self, event):
+        # Pro Windows: event.delta / 120 posune o jeden "krok"
+        # Používáme zápornou hodnotu, aby směr odpovídal pohybu prstu
+        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def append_log(self, text):
         # Bezpečný zápis do GUI z jakéhokoli vlákna
@@ -270,6 +277,7 @@ class ConfigGUI:
 
             # Nabindování na konkrétní textové pole
             text.bind("<Return>", handle_return)
+            text.bind("<MouseWheel>", lambda e: text.yview_scroll(int(-1*(e.delta/120)), "units"))
 
             btn_send = tk.Button(frame, text="Odeslat", command=lambda id=gui_id: self.send_gui_message(id))
             btn_send.pack(side=tk.RIGHT, padx=5)
