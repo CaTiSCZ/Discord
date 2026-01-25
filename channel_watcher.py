@@ -1,18 +1,13 @@
 # channel_watcher.py
-import discord
 import asyncio
-import os
 import re
 import logging
-from typing import List, Dict, Optional
+from typing import List
 from types import SimpleNamespace
-import sys
 import time
 from collections import deque
-import event
 from logger import setup_logger
 from dispatcher import dispatcher
-
 
 logger = setup_logger("ChannelWatcher", level=logging.DEBUG)
 
@@ -89,7 +84,6 @@ class MessageFormatter:
                 dice_type = first_roll_line.replace(k, "").strip()
                 break
 
-        
         header = f"{player_name}: {user_text}{num_iterations}x {dice_type}"
         if adv:
             header += f"({adv})"
@@ -97,7 +91,6 @@ class MessageFormatter:
         if bonus_match:
             header += f" {bonus_match.group(1)}"
         
-
         raw_rolls = lines[rolling_line_idx + 1:-1] if rolling_line_idx + 1 < len(lines) else []
         max_len = 0
         split_rolls = []
@@ -138,6 +131,7 @@ class MessageFormatter:
         return text
     
     def _wrapping(self, content, is_bot, autor):
+        """Zalomí řádky podle maximálního počtu znaků na řádek, přidá odsazení pokud je zobrazen autor."""
         message = []
         wrapped_lines = []
         if not content:
@@ -160,7 +154,7 @@ class MessageFormatter:
         return message 
 
     def _format_columns_all(self, content_lines: List[str]) -> List[str]:
-        """Zformátuje řádky do column layoutu (převzato a upraveno z původního kódu)."""
+        """Zformátuje řádky do column layoutu."""
         all_lines = []
         if self.header_text and content_lines:
             all_lines.append(self.header_text)
@@ -231,11 +225,13 @@ class ImageQueue:
         asyncio.create_task(self._print_image())
 
     def add_images(self, attachments):
+        """Přidá nové obrázky do fronty"""
         for att in attachments:
             if any(att.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', ".bmp"]):
                 self.images_queue.append(att.url)
                 
     async def _print_image(self):
+        """Postupně po jednom posílá obrázky z fronty přes socket"""
         while self.running:
             if self.images_queue:
                 image = self.images_queue.popleft()
@@ -260,7 +256,6 @@ class ChannelWatcher:
         self.config = config
         self.sio = sio
         
-
         self.channel_id = str(config.get("channel_id", "Unknown"))
         self.socket_panel = config.get("socket_panel", "panel-a")
         self.image_panel = config.get("image_panel", self.socket_panel)
@@ -272,15 +267,14 @@ class ChannelWatcher:
         self.ignore_mode = config.get("ignore_mode", None)
         self.comment = config.get("comment", "uncommented")
 
-
         self.formatter = MessageFormatter(self.config)
 
-        self.active_messages = []  # List dictů: {"id": int, "msg_obj": obj, "expiry": float}
+        self.active_messages = []  # List dicts: {"id": int, "msg_obj": obj, "expiry": float}
         self.running = False
         self._lock = asyncio.Lock()
 
         dispatcher.register(self.channel_id, self)
-        logger.debug(f"Watcher {self.channel_id} (Panel: {self.socket_panel}) vytvořen a zaregistrován.")
+        logger.debug(f"Watcher {self.channel_id} (Panel: {self.socket_panel}) created and registred.")
 
     async def start(self):
         self.running = True
@@ -289,9 +283,9 @@ class ChannelWatcher:
         if self.socket_panel is not None:
             if not self.manual_clear:
                 asyncio.create_task(self._auto_clear_loop())
-                logger.debug(f"Watcher pro kanál {self.channel_id} spouští TTL smyčku.")
+                logger.debug(f"Watcher for channel {self.channel_id} run TTL loop.")
             await self._refresh_display()
-        logger.info(f"Watcher ({self.comment}) pro kanál {self.channel_id} (Panel: {self.socket_panel}) spuštěn.")
+        logger.info(f"Watcher ({self.comment}) for channel {self.channel_id} (Panel: {self.socket_panel}) started.")
 
     async def on_new_message(self, message):
         """Volá se při nové zprávě z Discordu."""
@@ -316,7 +310,7 @@ class ChannelWatcher:
                     "msg_obj": message,
                     "expiry": expiry
                 })
-                logger.debug(f"Nová zpráva přidána: {message.id} od {message.author} (expirace za {self.interval}s)")
+                logger.debug(f"New message added: {message.id} from {message.author} (expire time {self.interval}s)")
                 await self._refresh_display()
 
     async def on_message_edit(self, message):
@@ -325,7 +319,7 @@ class ChannelWatcher:
             for m in self.active_messages:
                 if m["id"] == message.id:
                     m["msg_obj"] = message
-                    logger.debug(f"Zpráva {message.id} editována.")
+                    logger.debug(f"message {message.id} edited.")
                     await self._refresh_display()
                     break
 
@@ -338,7 +332,7 @@ class ChannelWatcher:
             mentions=[],
             attachments=[]
         )
-        logger.debug(f"Manuální vstup přijat od {author}: {text}")
+        logger.debug(f"Manual input from {author}: {text}")
         await self.on_new_message(mock_msg)
 
     async def clear_content(self):
@@ -348,10 +342,10 @@ class ChannelWatcher:
         async with self._lock:
             removed_count = self._cleanup_expired_messages()
             if removed_count == 0:
-                logger.warning("Není co mazat (žádná zpráva ještě neexpirovala).")
+                logger.warning("No expare messages.")
             else:
                 await self._refresh_display()
-                logger.info(f"Provedeno manuální promazání {removed_count} expirovaných zpráv.")
+                logger.info(f"Removed {removed_count} expire messages.")
 
     def _cleanup_expired_messages(self):
         """Filtruje expirované zprávy z active_messages a vrací počet odstraněných."""
@@ -369,32 +363,27 @@ class ChannelWatcher:
                     await self._refresh_display()
             await asyncio.sleep(1)
 
-
     async def _refresh_display(self):
         """Sestavení zpráv a odeslání do OBS/Souboru."""
-        # Získáme jen objekty zpráv pro formatter
-        logger.debug(f"Watcher {self.channel_id}: Obnovuje zobrazení s {len(self.active_messages)} aktivními zprávami.")
+        logger.debug(f"Watcher {self.channel_id}: refresh display with {len(self.active_messages)} active messages.")
         objs = [m["msg_obj"] for m in self.active_messages]
         
-        # Formatter vrátí pole řádků
         formatted_lines = self.formatter.format_messages(objs)
         
         if self.type_output in ("socket", "both"):    
-            # 1. Socket vysílání (HTML/Pre formát)
             await self.sio.emit("new_message", {
                 "panel": self.socket_panel,
                 "lines": formatted_lines
             })
-            logger.debug(f"Watcher {self.channel_id}: Odesláno {len(formatted_lines)} řádků na panel {self.socket_panel} přes Socket.io.")
+            logger.debug(f"Watcher {self.channel_id}: sent {len(formatted_lines)} rows on panel {self.socket_panel} trough Socket.io.")
 
-        # 2. Zápis do souboru (pokud je potřeba)
         if self.type_output in ("txt", "both"): 
             self._write_to_file(formatted_lines)
 
     def _write_to_file(self, lines):
+        """Uloží zprávu do souboru"""
         try:
             with open(self.file_path, "w", encoding="utf-8") as f:
-                # Pro TXT odstraníme HTML tagy, pokud tam nějaké jsou
                 processed_lines = []
                 for l in lines:
                     l = re.sub(r"<s>(.*?)</s>", r"-\1-", l)
@@ -403,4 +392,4 @@ class ChannelWatcher:
                     processed_lines.append(l)
                 f.write("\n".join(processed_lines))
         except Exception as e:
-            logger.error(f"Chyba při zápisu do souboru: {e}")
+            logger.error(f"Error due to write to file: {e}")

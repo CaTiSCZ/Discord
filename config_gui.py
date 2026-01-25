@@ -4,16 +4,12 @@ from tkinter import ttk, messagebox
 import json
 import os
 import sys
-#import subprocess
 import threading
 import asyncio
 import logging
-#from keyboard_listener import KeyboardListener
 import main_client
 from logger import setup_logger, CallbackHandler, Logging
 from dispatcher import dispatcher
-#from web.server import start_web_server, stop_web_server
-
 
 CONFIG_FILE = "config.json"
 
@@ -64,16 +60,14 @@ class ConfigGUI:
         self.root.title("Discord Bot Control Panel")
 
         self.lockable = {}
-
         self.gui_size()
         
-
         # Inicializuj logger s GUI callbackem
         self.logging_ctx = Logging()
         self.logger = setup_logger("GUI", level=logging.DEBUG)
 
         # Přidej CallbackHandler pro zápis do log panelu
-        self.gui_handler = CallbackHandler(sink_text=self.append_log, level=logging.DEBUG)
+        self.gui_handler = CallbackHandler(sink_text=self.append_log, level=logging.INFO)
         self.gui_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"))
         logging.getLogger().addHandler(self.gui_handler)
 
@@ -128,7 +122,6 @@ class ConfigGUI:
         run.pack(side="left", padx=5)
         tk.Button(btn_frame, text="Delete Files (d)", command=self.safe_dispatch_clear).pack(side="left", padx=5)
         tk.Button(btn_frame, text="Quit Bot (q)", command=self.stop_bot).pack(side="left", padx=5)
-        #tk.Button(btn_frame, text="GUI size", command=self.gui_size).pack(side="left", padx=5)
         self.lockable["ADD"] = addW
         self.lockable["SAVE"] = saveBtn
         self.lockable["RUN"] = run
@@ -148,7 +141,7 @@ class ConfigGUI:
         self.left_panel.columnconfigure(0, weight=1)
         self.left_panel.rowconfigure(0, weight=1)
 
-        self.log_text = tk.Text(self.left_panel, state='disabled', wrap='word', bg="#ffffff", fg="#000000", font=("Consolas", 10))
+        self.log_text = tk.Text(self.left_panel, state='disabled', wrap='word', bg="#E2E0E0", fg="#000000", font=("Consolas", 10))
         self.log_text.grid(row=0, column=0, sticky="nsew")
         
         log_scroll = ttk.Scrollbar(self.left_panel, orient="vertical", command=self.log_text.yview)
@@ -189,8 +182,6 @@ class ConfigGUI:
         self.root.state('zoomed')
 
     def _on_mousewheel(self, event):
-        # Pro Windows: event.delta / 120 posune o jeden "krok"
-        # Používáme zápornou hodnotu, aby směr odpovídal pohybu prstu
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def append_log(self, text):
@@ -206,7 +197,6 @@ class ConfigGUI:
     def update_connection_led(self, is_connected):
         """Změní barvu kolečka na základě stavu."""
         color = "green" if is_connected else "red"
-        # Protože tohle může přijít z async vlákna, použijeme after pro bezpečný update GUI
         self.root.after(0, lambda: self.conn_canvas.itemconfig(self.conn_dot, fill=color))
 
     # ----------------------------------------------------------------
@@ -219,7 +209,6 @@ class ConfigGUI:
                 cfg = json.load(f)
                 self.logger.debug("Configuration loaded successfully.")
 
-            # normalize watchers
             clean = []
             for w in cfg.get("watchers", []):
                 new_w = DEFAULT_WATCHER.copy()
@@ -266,29 +255,22 @@ class ConfigGUI:
             
             # --- Logika pro Enter a Shift+Enter ---
             def handle_return(event, gid=gui_id):
-                # event.state & 0x1 kontroluje, zda je držen Shift
                 if not (event.state & 0x1):
-                    # Pouhý Enter -> Odeslat
                     self.send_gui_message(gid)
                     self.root.focus_set()
-                    return "break" # Zabrání vložení nového řádku do pole
-                # Shift + Enter -> Tkinter standardně vloží nový řádek (nevracíme break)
+                    return "break" 
                 return None
 
-            # Nabindování na konkrétní textové pole
             text.bind("<Return>", handle_return)
             text.bind("<MouseWheel>", lambda e: text.yview_scroll(int(-1*(e.delta/120)), "units"))
 
-            btn_send = tk.Button(frame, text="Odeslat", command=lambda id=gui_id: self.send_gui_message(id))
+            btn_send = tk.Button(frame, text="Send", command=lambda id=gui_id: self.send_gui_message(id))
             btn_send.pack(side=tk.RIGHT, padx=5)
             
-
     def toggle_watcher_visibility(self, var_enabled, details_frame):
             """Schová nebo zobrazí detaily watcheru."""
             if var_enabled.get():
-                # Používáme pack, protože zbytek tvého GUI používá pack
                 details_frame.pack(fill="x", padx=15, pady=5, after=details_frame.master.winfo_children()[0])
-                # Poznámka: 'after' zajistí, že se to otevře pod hlavičkou
             else:
                 details_frame.pack_forget()
     # ----------------------------------------------------------------
@@ -306,7 +288,6 @@ class ConfigGUI:
         self.watcher_vars[idx]["enabled"] = enabled_var
 
         # DETAILNÍ PANEL (Vše pod hlavičkou, co se bude schovávat)
-        # Použijeme LabelFrame, aby to vypadalo jako karta
         details_frame = ttk.LabelFrame(watcher_wrapper, text=f"Settings")
 
         # Checkbutton v hlavičce
@@ -318,7 +299,7 @@ class ConfigGUI:
         )
         check.pack(side="left")
 
-        # Poznámka v hlavičce (aby bylo vidět, co je to za kanál i když je sbaleno)
+        # Poznámka v hlavičce 
         ttk.Label(header_frame, text=" | Comment:").pack(side="left")
         comment_entery = tk.StringVar(value=watcher.get("comment", ""))
         self.watcher_vars[idx]["comment"] = comment_entery
@@ -398,18 +379,17 @@ class ConfigGUI:
         ttk.Entry(row_header, textvariable=var_header, width=20).pack(side="left", padx=5)
         # Text panel
         ttk.Label(row_header, text="Text Panel:").pack(side="left", padx=(10,0))
-        var_panel = tk.StringVar(value=watcher.get("socket_panel", "panel-a"))
+        var_panel = tk.StringVar(value=str(watcher.get("socket_panel", "panel-a")))
         self.watcher_vars[idx]["socket_panel"] = var_panel
         panel_combo = ttk.Combobox(row_header, textvariable=var_panel, values=["panel-a", "panel-b", "panel-c", "panel-d","panel-e", "panel-o", "None"], width=10)
         panel_combo.pack(side="left", padx=5)
         # Image panel
         ttk.Label(row_header, text="Image panel:").pack(side="left", padx=(10,0))
-        var_image_panel = tk.StringVar(value=watcher.get("image_panel", "panel-o"))
+        var_image_panel = tk.StringVar(value=str(watcher.get("image_panel", "panel-o")))
         self.watcher_vars[idx]["image_panel"] = var_image_panel
-        image_combo = ttk.Combobox(row_header, textvariable=var_image_panel, values=["panel-o", None], width=10)
+        image_combo = ttk.Combobox(row_header, textvariable=var_image_panel, values=["panel-o", "None"], width=10)
         image_combo.pack(side="left", padx=5)
 
-        
         # 3. REGISTRACE DO LOCKABLE
         self.lockable[f"watcher_{idx}"] = watcher_wrapper
         # 4. NASTAVENÍ POČÁTEČNÍ VIDITELNOSTI
@@ -472,7 +452,7 @@ class ConfigGUI:
                     "channel_id": get_str("channel_id", ""),
                     "file_path": get_str("file_path", "output.txt"),
                     "socket_panel": get_combo("socket_panel", "panel-a"),
-                    "image_panel": get_str("image_panel", "panel-o"),
+                    "image_panel": get_combo("image_panel", "panel-o"),
                     "interval": get_int("interval", 10),
                     "show_author_mode": get_combo("show_author", "both"),
                     "ignore_mode": get_combo("ignore_mode", None),
@@ -535,7 +515,7 @@ class ConfigGUI:
             if widget: 
                 set_widget_state(widget, enable=True)
 
-        # ----------------------------------------------------------------
+    # ----------------------------------------------------------------
     def on_key_press(self, event):
         """Handler pro stisk klávesy v GUI okně."""
         focus = self.root.focus_get()
@@ -546,7 +526,9 @@ class ConfigGUI:
                     self.stop_bot()
                 else:
                     asyncio.run_coroutine_threadsafe(dispatcher.on_key_press(key), self.loop)
+
     def safe_dispatch_clear(self):
+        """ Volá manuální mazání přes dispatcher na všech watcherech, kde je to povoleno. """
         if self.bot_running and self.loop:
             asyncio.run_coroutine_threadsafe(dispatcher.dispatch_clear(), self.loop)
         else:

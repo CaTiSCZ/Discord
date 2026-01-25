@@ -17,7 +17,6 @@ class MessageDispatcher:
     async def update_connection_status(self, is_connected):
         """Tuto metodu volá server."""
         if self.connection_callback:
-            # Voláme callback v GUI
             self.connection_callback(is_connected)
         
     def register(self, channel_id, watcher_instance):
@@ -26,7 +25,7 @@ class MessageDispatcher:
         if cid not in self._watchers:
             self._watchers[cid] = []
         self._watchers[cid].append(watcher_instance)
-        logger.debug(f"Watcher zaregistrován pro ID: {cid}")
+        logger.debug(f"Watcher registred for ID: {cid}")
 
     async def dispatch_discord(self, message):
         """Doručí zprávu z Discordu správným watcherům."""
@@ -69,5 +68,5 @@ class MessageDispatcher:
             for watcher in watchers_list:
                 if watcher.manual_clear:
                     await watcher.clear_content()
-# Globální instance pro snadný import napříč projektem
+
 dispatcher = MessageDispatcher()
