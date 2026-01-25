@@ -267,8 +267,6 @@ class ChannelWatcher:
         self.ignore_mode = config.get("ignore_mode", None)
         self.comment = config.get("comment", "uncommented")
 
-        self.formatter = MessageFormatter(self.config)
-
         self.active_messages = []  # List dicts: {"id": int, "msg_obj": obj, "expiry": float}
         self.running = False
         self._lock = asyncio.Lock()
@@ -281,6 +279,7 @@ class ChannelWatcher:
         if self.image_panel is not None:
             self.images = ImageQueue (self.interval, self.image_panel, self.sio)
         if self.socket_panel is not None:
+            self.formatter = MessageFormatter(self.config)
             if not self.manual_clear:
                 asyncio.create_task(self._auto_clear_loop())
                 logger.debug(f"Watcher for channel {self.channel_id} run TTL loop.")
