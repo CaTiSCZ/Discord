@@ -8,6 +8,7 @@ from typing import List, Dict, Optional
 from types import SimpleNamespace
 import sys
 import time
+from collections import deque
 import event
 from logger import setup_logger
 from dispatcher import dispatcher
@@ -29,29 +30,29 @@ class MessageFormatter:
         for msg in msgs:
             message = []
             if msg.author.name == "Avrae":
-                content = self.process_roll(msg)
+                content = self._process_roll(msg)
             else:
-                content = [self.normalize_line(l) for l in msg.content.splitlines()]
+                content = [self._normalize_line(l) for l in msg.content.splitlines()]
             is_bot =  msg.author.bot
             autor = re.sub(r"\s*\([^)]*\)\s*$", "", msg.author.display_name)
 
-            message = self.wrapping(content, is_bot, autor)
+            message = self._wrapping(content, is_bot, autor)
             messages.extend(message)
 
-        return self.format_columns_all(messages)
+        return self._format_columns_all(messages)
     
-    def process_roll(self, msg):
+    def _process_roll(self, msg):
         """Rozhodne, jestli jde o single/multi roll a zavolá parser."""
-        lines = [self.normalize_line(l) for l in msg.content.splitlines()]
+        lines = [self._normalize_line(l) for l in msg.content.splitlines()]
         author = re.sub(r"\s*\([^)]*\)\s*$", "", msg.mentions[0].display_name)
         
         if len(lines) == 3:
-            return self.parse_single_roll(lines, author)
+            return self._parse_single_roll(lines, author)
         elif len(lines) >= 5:
-            return self.parse_multi_roll(lines, author)
+            return self._parse_multi_roll(lines, author)
         return []    
 
-    def parse_single_roll(self, lines: List[str], author: str) -> List[str]:
+    def _parse_single_roll(self, lines: List[str], author: str) -> List[str]:
         """Parse single roll (3 lines): player, rollline, total"""
         try:
             player_line, roll_line, total_value = lines
@@ -61,7 +62,7 @@ class MessageFormatter:
         player_name = author
         return [f"{player_name}: {roll_line.strip()} = {total_value.strip()}"]
 
-    def parse_multi_roll(self, lines: List[str], author: str) -> List[str]:
+    def _parse_multi_roll(self, lines: List[str], author: str) -> List[str]:
         """
         Parse multi roll (≥5 lines). Vrací hlavičku a jednotlivé řádky s číslováním.
         Implementace věrná původní logice.
@@ -110,11 +111,11 @@ class MessageFormatter:
             else:
                 pre, post = line, ""
             split_rolls.append((pre, post))
-            max_len = max(max_len, self.visible_len(pre))
+            max_len = max(max_len, self._visible_len(pre))
 
         roll_lines = []
         for idx, (pre, post) in enumerate(split_rolls, 1):
-            pad_len = max_len - self.visible_len(pre)
+            pad_len = max_len - self._visible_len(pre)
             if post:
                 roll_lines.append(f"{idx:02d}. {pre}{'&nbsp;'*pad_len} {post}".rstrip())
             else:
@@ -122,7 +123,7 @@ class MessageFormatter:
 
         return [header] + roll_lines + [lines[-1]]
     
-    def normalize_line(self, text: str) -> str:
+    def _normalize_line(self, text: str) -> str:
         """Odstraní markdowny a převede některé značky na HTML."""
         text = text.strip()
         text = text.replace("__", "").replace("`", "")
@@ -136,28 +137,32 @@ class MessageFormatter:
         text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
         return text
     
-    def wrapping(self, content, is_bot, autor):
+    def _wrapping(self, content, is_bot, autor):
         message = []
         wrapped_lines = []
+        if not content:
+            return message
         indent = '&nbsp;' * (len(autor) + 2)
         if self.show_author_mode == "both" \
                 or (is_bot and self.show_author_mode == "bot") \
                 or (not is_bot and self.show_author_mode == "human"):
             for line in content:
-                wrapped_lines.extend(self.smart_wrap(line, (self.max_column_width - (len(autor) + 2))))
+                wrapped_lines.extend(self._smart_wrap(line, (self.max_column_width - (len(autor) + 2))))
             message.append(f"{autor}: {wrapped_lines[0]}")
-            for l in wrapped_lines[1:]:
+            for l in wrapped_lines[1:self.max_rows_per_column-1]:
                 message.append(f"{indent}{l}")
+            for l in wrapped_lines[self.max_rows_per_column-1:]:
+                message.append(l)
         else:
             for line in content:
-                message.extend(self.smart_wrap(line, self.max_column_width))  
+                message.extend(self._smart_wrap(line, self.max_column_width))  
             
         return message 
 
-    def format_columns_all(self, content_lines: List[str]) -> List[str]:
+    def _format_columns_all(self, content_lines: List[str]) -> List[str]:
         """Zformátuje řádky do column layoutu (převzato a upraveno z původního kódu)."""
         all_lines = []
-        if self.header_text:
+        if self.header_text and content_lines:
             all_lines.append(self.header_text)
         all_lines.extend(content_lines)
         n = len(all_lines)
@@ -171,7 +176,7 @@ class MessageFormatter:
             start = c * self.max_rows_per_column
             end = min(start + self.max_rows_per_column, n)
             cols.append(all_lines[start:end])
-        col_widths = [min(max(self.visible_len(line) for line in col), self.max_column_width) for col in cols]
+        col_widths = [min(max(self._visible_len(line) for line in col), self.max_column_width) for col in cols]
         max_len = max(len(col) for col in cols)
         for col in cols:
             while len(col) < max_len:
@@ -181,26 +186,26 @@ class MessageFormatter:
             row = ""
             for col, width in zip(cols, col_widths):
                 line = col[i]
-                pad_len = width - self.visible_len(line)
+                pad_len = width - self._visible_len(line)
                 row += line + ('&nbsp;' * (pad_len + self.column_spacing))
             output_lines.append(row.rstrip())
         
         return output_lines
     
-    def visible_len(self, s: str) -> int:
+    def _visible_len(self, s: str) -> int:
         """Vrátí délku textu bez HTML tagů a entit."""
         clean = re.sub(r"<[^>]*>", "", s)
         clean = clean.replace("&nbsp;", " ")
         return len(clean)
 
-    def smart_wrap(self, text: str, width: int) -> List[str]:
+    def _smart_wrap(self, text: str, width: int) -> List[str]:
         """Zalamuje text podle viditelné délky (ignoruje HTML tagy)."""
         words = text.split()
         lines = []
         current = ""
         current_len = 0
         for w in words:
-            w_len = self.visible_len(w)
+            w_len = self._visible_len(w)
             if current_len + (1 if current else 0) + w_len > width:
                 lines.append(current)
                 current = w
@@ -215,6 +220,40 @@ class MessageFormatter:
             lines.append(current)
         return lines or [""]
     
+class ImageQueue:
+    def __init__(self, interval, panel, sio):
+        self.interval = interval
+        self.panel = panel
+        self.sio = sio
+
+        self.images_queue = deque()
+        self.running = True
+        asyncio.create_task(self._print_image())
+
+    def add_images(self, attachments):
+        for att in attachments:
+            if any(att.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', ".bmp"]):
+                self.images_queue.append(att.url)
+                
+    async def _print_image(self):
+        while self.running:
+            if self.images_queue:
+                image = self.images_queue.popleft()
+                await self.sio.emit("new_image", {
+                    "panel": self.panel, 
+                    "url": image, 
+                        })
+                logger.debug(f"Img sent - {image} to {self.panel}")
+                await asyncio.sleep(self.interval)
+                if not self.images_queue:
+                    await self.sio.emit("new_image", {
+                        "panel": self.panel, 
+                        "url": "", 
+                    })
+                    logger.debug("Img deleted")
+            else:
+                await asyncio.sleep(1)        
+        
 class ChannelWatcher:
     def __init__(self, client, config, sio):
         self.client = client
@@ -231,7 +270,6 @@ class ChannelWatcher:
         self.manual_clear = config.get("manual_clear", True)
         self.gui_watcher = config.get("gui_watcher", False)
         self.ignore_mode = config.get("ignore_mode", None)
-        self.show_image = config.get("show_image", False)
         self.comment = config.get("comment", "uncommented")
 
 
@@ -246,10 +284,13 @@ class ChannelWatcher:
 
     async def start(self):
         self.running = True
-        if not self.manual_clear:
-            asyncio.create_task(self._ttl_loop())
-            logger.debug(f"Watcher pro kanál {self.channel_id} spouští TTL smyčku.")
-        await self._refresh_display()
+        if self.image_panel is not None:
+            self.images = ImageQueue (self.interval, self.image_panel, self.sio)
+        if self.socket_panel is not None:
+            if not self.manual_clear:
+                asyncio.create_task(self._auto_clear_loop())
+                logger.debug(f"Watcher pro kanál {self.channel_id} spouští TTL smyčku.")
+            await self._refresh_display()
         logger.info(f"Watcher ({self.comment}) pro kanál {self.channel_id} (Panel: {self.socket_panel}) spuštěn.")
 
     async def on_new_message(self, message):
@@ -262,27 +303,21 @@ class ChannelWatcher:
             return
         
         async with self._lock:
-            # Cesta pro obrázky (Okamžitá)
-            if self.show_image and message.attachments:
-                for att in message.attachments:
-                    if any(att.filename.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', ".bmp"]):
-                        await self.sio.emit("new_image", {
-                            "url": att.url, 
-                            "panel": self.image_panel, 
-                            "interval": self.interval
-                        })
-            # 1. Vyčistíme expirované zprávy
-            self.cleanup_expired_messages()
+            if self.image_panel is not None and message.attachments:
+                self.images.add_images(message.attachments)
+                logger.debug("Img received")
 
-            # 2. Přidáme novou zprávu
-            expiry = time.time() + self.interval
-            self.active_messages.append({
-                "id": message.id,
-                "msg_obj": message,
-                "expiry": expiry
-            })
-            logger.debug(f"Nová zpráva přidána: {message.id} od {message.author} (expirace za {self.interval}s)")
-            await self._refresh_display()
+            if self.socket_panel is not None:
+                self._cleanup_expired_messages()
+
+                expiry = time.time() + self.interval
+                self.active_messages.append({
+                    "id": message.id,
+                    "msg_obj": message,
+                    "expiry": expiry
+                })
+                logger.debug(f"Nová zpráva přidána: {message.id} od {message.author} (expirace za {self.interval}s)")
+                await self._refresh_display()
 
     async def on_message_edit(self, message):
         """Aktualizace existující zprávy bez resetu času."""
@@ -296,40 +331,42 @@ class ChannelWatcher:
 
     async def on_manual_input(self, text, author="Manual"):
         """Vytvoření falešného objektu pro manuální vstup z GUI."""
-        # Dummy objekt simulující discord.Message
-        
         mock_msg = SimpleNamespace(
             id=int(time.time() * 1000),
             content=text,
             author=SimpleNamespace(name=author, display_name=author, bot=False),
             mentions=[],
-            embeds=[]
+            attachments=[]
         )
         logger.debug(f"Manuální vstup přijat od {author}: {text}")
         await self.on_new_message(mock_msg)
 
     async def clear_content(self):
         """Logika pro klávesu 'd' (Smart Clear)."""
-        removed_count = self.cleanup_expired_messages()
-        if removed_count == 0:
-            logger.warning("Není co mazat (žádná zpráva ještě neexpirovala).")
-        else:
-            await self._refresh_display()
-            logger.info(f"Provedeno manuální promazání {removed_count} expirovaných zpráv.")
+        if self.socket_panel is None:
+            return
+        async with self._lock:
+            removed_count = self._cleanup_expired_messages()
+            if removed_count == 0:
+                logger.warning("Není co mazat (žádná zpráva ještě neexpirovala).")
+            else:
+                await self._refresh_display()
+                logger.info(f"Provedeno manuální promazání {removed_count} expirovaných zpráv.")
 
-    def cleanup_expired_messages(self):
+    def _cleanup_expired_messages(self):
         """Filtruje expirované zprávy z active_messages a vrací počet odstraněných."""
         now = time.time()
         old_count = len(self.active_messages)
         self.active_messages = [m for m in self.active_messages if m["expiry"] > now]
         return old_count - len(self.active_messages)
 
-    async def _ttl_loop(self):
+    async def _auto_clear_loop(self):
         """Smyčka, která hlídá automatické mazání po čase."""
         while self.running:
-            removed_count = self.cleanup_expired_messages()
-            if removed_count > 0:
-                await self._refresh_display()
+            async with self._lock:
+                removed_count = self._cleanup_expired_messages()
+                if removed_count > 0:
+                    await self._refresh_display()
             await asyncio.sleep(1)
 
 

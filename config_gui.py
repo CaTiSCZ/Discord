@@ -33,8 +33,7 @@ DEFAULT_WATCHER = {
     "max_column_width": 40,
     "header_text": "",
     "column_spacing": 2,
-    "gui_watcher": False,
-    "show_image": False,
+    "gui_watcher": False,    
 }
 
 def set_widget_state(widget, enable=False):
@@ -160,7 +159,7 @@ class ConfigGUI:
         self.right_panel.grid(row=0, column=1, sticky="ns")
 
         # Seznam watcherů se scrollbarem
-        self.canvas = tk.Canvas(self.right_panel, highlightthickness=0, width=700) # Pevnější šířka pro pravou stranu
+        self.canvas = tk.Canvas(self.right_panel, highlightthickness=0, width=600) # Pevnější šířka pro pravou stranu
         self.scrollbar = ttk.Scrollbar(self.right_panel, orient="vertical", command=self.canvas.yview)
         self.scroll_frame = ttk.Frame(self.canvas)
 
@@ -300,7 +299,7 @@ class ConfigGUI:
 
         # DETAILNÍ PANEL (Vše pod hlavičkou, co se bude schovávat)
         # Použijeme LabelFrame, aby to vypadalo jako karta
-        details_frame = ttk.LabelFrame(watcher_wrapper, text=f"Nastavení sledování")
+        details_frame = ttk.LabelFrame(watcher_wrapper, text=f"Settings")
 
         # Checkbutton v hlavičce
         check = ttk.Checkbutton(
@@ -327,12 +326,15 @@ class ConfigGUI:
         var_cid = tk.StringVar(value=watcher.get("channel_id", ""))
         self.watcher_vars[idx]["channel_id"] = var_cid
         ttk.Entry(row_id, textvariable=var_cid, width=20).pack(side="left", expand=True, padx=5)
-
         # File Path 
         ttk.Label(row_id, text="Output File:", width=10).pack(side="left", padx=(10,0))
         var_path = tk.StringVar(value=watcher.get("file_path", "output.txt"))
         self.watcher_vars[idx]["file_path"] = var_path
         ttk.Entry(row_id, textvariable=var_path, width=20).pack(side="left", expand=True, padx=5)
+        #GUI watcher
+        var_gui = tk.BooleanVar(value=watcher.get("gui_watcher", False))
+        self.watcher_vars[idx]["gui_watcher"] = var_gui
+        ttk.Checkbutton(row_id, text="GUI Watcher", variable=var_gui, command=lambda idx=idx, var=var_gui: self.update_gui_watcher(idx, var)).pack(side="left", padx=5)
 
         #interval, rows per column, column width
         row_limits = ttk.Frame(details_frame)
@@ -352,6 +354,11 @@ class ConfigGUI:
         var_colwidth = tk.IntVar(value=watcher.get("max_column_width", 40))
         self.watcher_vars[idx]["max_column_width"] = var_colwidth
         ttk.Entry(row_limits, textvariable=var_colwidth, width=5).pack(side="left", padx=5)
+        # Manual Clear
+        var_clear = tk.BooleanVar(value=watcher.get("manual_clear", False))
+        self.watcher_vars[idx]["manual_clear"] = var_clear
+        ttk.Checkbutton(row_limits, text="Manual Clear", variable=var_clear).pack(side="left", padx=5)
+    
         # Ignore Mode & Show Author
         row_modes = ttk.Frame(details_frame)
         row_modes.pack(fill="x", padx=5, pady=2)
@@ -367,7 +374,7 @@ class ConfigGUI:
         self.watcher_vars[idx]["show_author"] = var_show_author
         author_combo = ttk.Combobox(row_modes, textvariable=var_show_author, values=["both", "human", "bot", "None"], width=10)
         author_combo.pack(side="left", padx=5)
-
+        # Output file
         ttk.Label(row_modes, text="Type Output:").pack(side="left", padx=(10,0))
         var_type_output = tk.StringVar(value=watcher.get("type_output", "socket"))
         self.watcher_vars[idx]["type_output"] = var_type_output
@@ -381,35 +388,20 @@ class ConfigGUI:
         var_header = tk.StringVar(value=watcher.get("header_text", ""))
         self.watcher_vars[idx]["header_text"] = var_header
         ttk.Entry(row_header, textvariable=var_header, width=20).pack(side="left", padx=5)
-        
-        ttk.Label(row_header, text="Socket Panel:").pack(side="left", padx=(10,0))
+        # Text panel
+        ttk.Label(row_header, text="Text Panel:").pack(side="left", padx=(10,0))
         var_panel = tk.StringVar(value=watcher.get("socket_panel", "panel-a"))
         self.watcher_vars[idx]["socket_panel"] = var_panel
-        panel_combo = ttk.Combobox(row_header, textvariable=var_panel, values=["panel-a", "panel-b", "panel-c", "panel-d", "panel-o"], width=10)
+        panel_combo = ttk.Combobox(row_header, textvariable=var_panel, values=["panel-a", "panel-b", "panel-c", "panel-d","panel-e", "panel-o", "None"], width=10)
         panel_combo.pack(side="left", padx=5)
-
+        # Image panel
         ttk.Label(row_header, text="Image panel:").pack(side="left", padx=(10,0))
         var_image_panel = tk.StringVar(value=watcher.get("image_panel", "panel-o"))
         self.watcher_vars[idx]["image_panel"] = var_image_panel
-        image_combo = ttk.Combobox(row_header, textvariable=var_image_panel, values=["panel-a", "panel-b", "panel-c", "panel-d", "panel-o"], width=10)
+        image_combo = ttk.Combobox(row_header, textvariable=var_image_panel, values=["panel-o", None], width=10)
         image_combo.pack(side="left", padx=5)
 
-        # Další nastavení
-        row_opts = ttk.Frame(details_frame)
-        row_opts.pack(fill="x", padx=5, pady=2)
-
-        var_clear = tk.BooleanVar(value=watcher.get("manual_clear", False))
-        self.watcher_vars[idx]["manual_clear"] = var_clear
-        ttk.Checkbutton(row_opts, text="Manual Clear", variable=var_clear).pack(side="left", padx=5)
         
-        var_gui = tk.BooleanVar(value=watcher.get("gui_watcher", False))
-        self.watcher_vars[idx]["gui_watcher"] = var_gui
-        ttk.Checkbutton(row_opts, text="GUI Watcher", variable=var_gui, command=lambda idx=idx, var=var_gui: self.update_gui_watcher(idx, var)).pack(side="left", padx=5)
-
-        var_show_image = tk.BooleanVar(value=watcher.get("show_image", False))
-        self.watcher_vars[idx]["show_image"] = var_show_image
-        ttk.Checkbutton(row_opts, text="Show Image", variable=var_show_image).pack(side="left", padx=5)
-
         # 3. REGISTRACE DO LOCKABLE
         self.lockable[f"watcher_{idx}"] = watcher_wrapper
         # 4. NASTAVENÍ POČÁTEČNÍ VIDITELNOSTI
@@ -471,7 +463,7 @@ class ConfigGUI:
                     "comment": get_str("comment", ""),
                     "channel_id": get_str("channel_id", ""),
                     "file_path": get_str("file_path", "output.txt"),
-                    "socket_panel": get_str("socket_panel", "panel-a"),
+                    "socket_panel": get_combo("socket_panel", "panel-a"),
                     "image_panel": get_str("image_panel", "panel-o"),
                     "interval": get_int("interval", 10),
                     "show_author_mode": get_combo("show_author", "both"),
@@ -483,7 +475,6 @@ class ConfigGUI:
                     "max_column_width": get_int("max_column_width", 40),
                     "column_spacing": int(w.get("column_spacing", 2)),
                     "gui_watcher": get_bool("gui_watcher", False),
-                    "show_image": get_bool("show_image", False),
                 }
                 clean_watchers.append(clean)
             self.config["watchers"] = clean_watchers

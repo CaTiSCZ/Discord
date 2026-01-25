@@ -12,15 +12,36 @@ socket.on("new_message", (data) => {
   const panelId = data.panel + "-content";
   const el = document.getElementById(panelId);
   
-  if (el) {
     // Formatter posílá pole řádků (data.lines), spojíme je do textu
     if (el) {
         const lines = Array.isArray(data.lines) ? data.lines : [];
         el.innerHTML = lines.join("\n");
-    }
-  } else {
-    console.warn("Element with ID " + panelId + " not found.");
+    } else {
+        console.warn("Element with ID " + panelId + " not found.");
   }
+});
+socket.on("new_image", (data) => {
+  // Předpokládáme, že v data.panel posíláš "panel-a" nebo "panel-b"
+  // Pokud tam posíláš čísla, stačí v configu nastavit ID panelu správně
+  const panelId = data.panel + "-content";
+  const imgElement = document.getElementById(panelId);
+  if (!imgElement) return;
+  
+    if (data.url && data.url.trim() !== "") {
+        imgElement.src = data.url;
+        imgElement.onload = () => {
+            imgElement.classList.add("visible");
+        };
+    } else {
+        // Schování obrázku
+        imgElement.classList.remove("visible");
+        // Vymazat src až po doznění animace (0.3s v CSS)
+        setTimeout(() => { 
+            if (!imgElement.classList.contains("visible")) {
+                imgElement.src = ""; 
+            }
+        }, 350); 
+    }
 });
 
 // Zpracování vymazání (clear_messages)
