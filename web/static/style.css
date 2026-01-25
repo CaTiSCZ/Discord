@@ -90,7 +90,7 @@ html, body {
     font-size: 31px;
     text-shadow: 1px 1px 2px black; /* Přidá stín pro lepší čitelnost na různých pozadích */
     background-color: rgba(0, 0, 0, 0.98); /* Pozadí může být černé pro kontrast */
-    color: #e2e2e2;              /* Výchozí barva textu bílá */  
+    color: #ffffff;              /* Výchozí barva textu bílá */  
 }
 
 /* Definice stylů pro tagy, které vyrobíš v normalize_line */
