@@ -224,6 +224,12 @@ class ImageQueue:
         self.running = True
         asyncio.create_task(self._print_image())
 
+    def add_url_list(self, urls):
+        """Přidá seznam čistých URL adres do fronty"""
+        for url in urls:
+            self.images_queue.append(url)
+            logger.debug(f"URL image added to queue: {url}")
+
     def add_images(self, attachments):
         """Přidá nové obrázky do fronty"""
         for att in attachments:
@@ -288,7 +294,7 @@ class ChannelWatcher:
 
     async def on_new_message(self, message):
         """Volá se při nové zprávě z Discordu."""
-        if self.ignore_mode == "bots" and message.author.bot:
+        if self.ignore_mode == "bot" and message.author.bot:
             return
         if self.ignore_mode == "humans" and not message.author.bot:
             return
@@ -296,17 +302,36 @@ class ChannelWatcher:
             return
         
         async with self._lock:
-            if self.image_panel is not None and message.attachments:
-                self.images.add_images(message.attachments)
-                logger.debug("Img received")
+            content = message.content
+            if self.image_panel is not None:
+                url_pattern = r'(https?://\S+\.(?:png|jpg|jpeg|gif|webp|bmp))'
+                found_urls = re.findall(url_pattern, message.content, re.IGNORECASE)
+                
+                if found_urls:
+                    # Přidáme nalezená URL do fronty obrázků (jako by to byly přílohy)
+                    self.images.add_url_list(found_urls)
+                    # Odstraníme tato URL z textu, aby se nepsala do panelu
+                    content = re.sub(url_pattern, '', message.content).strip()
+               
+                if message.attachments:
+                    self.images.add_images(message.attachments)
+                    logger.debug("Img received")
 
             if self.socket_panel is not None:
-                self._cleanup_expired_messages()
+                self._cleanup_expired_messages()          
+
+                modified_msg = SimpleNamespace(
+                    id=message.id,
+                    content=content,
+                    author=message.author,
+                    mentions=message.mentions,
+                    attachments=message.attachments # ponecháme pro případné další zpracování
+                )
 
                 expiry = time.time() + self.interval
                 self.active_messages.append({
                     "id": message.id,
-                    "msg_obj": message,
+                    "msg_obj": modified_msg,
                     "expiry": expiry
                 })
                 logger.debug(f"New message added: {message.id} from {message.author} (expire time {self.interval}s)")
