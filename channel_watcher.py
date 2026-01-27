@@ -366,10 +366,10 @@ class ChannelWatcher:
         async with self._lock:
             removed_count = self._cleanup_expired_messages()
             if removed_count == 0:
-                logger.warning("No expare messages.")
+                logger.warning(f"No expare messages ({self.comment}).")
             else:
                 await self._refresh_display()
-                logger.info(f"Removed {removed_count} expire messages.")
+                logger.info(f"Removed {removed_count} expire messages ({self.comment}).")
 
     def _cleanup_expired_messages(self):
         """Filtruje expirované zprávy z active_messages a vrací počet odstraněných."""
