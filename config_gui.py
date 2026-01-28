@@ -67,7 +67,7 @@ class ConfigGUI:
         self.logger = setup_logger("GUI", level=logging.DEBUG)
 
         # Přidej CallbackHandler pro zápis do log panelu
-        self.gui_handler = CallbackHandler(sink_text=self.append_log, level=logging.INFO)
+        self.gui_handler = CallbackHandler(sink_text=self.append_log, level=logging.WARNING)
         self.gui_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"))
         logging.getLogger().addHandler(self.gui_handler)
 

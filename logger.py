@@ -13,6 +13,10 @@ application_logger = None
 
 logger = None
 
+class NoPyNaClFilter(logging.Filter):
+    def filter(self, record):
+        return "PyNaCl is not installed" not in record.getMessage()
+
 class PlainTextTCPHandler(logging.handlers.SocketHandler):
     def __init__(self, host: str, port: int | None) -> None:
         super().__init__(host, port)
@@ -56,13 +60,9 @@ class Logging(AbstractContextManager):
     def __init__(self, tcp_host=None, tcp_port=TCP_HANDLER_DEFAULT_HOST_PORT):
         super().__init__()
         
-        # Vypnout VEŠKERÉ logy z discord.py knihovny (nechceme je vidět)
-        logging.getLogger("discord").setLevel(logging.CRITICAL)
-        logging.getLogger("discord.http").setLevel(logging.CRITICAL)
-        logging.getLogger("discord.gateway").setLevel(logging.CRITICAL)
+        discord_logger = logging.getLogger('discord.client')
+        discord_logger.addFilter(NoPyNaClFilter())
 
-        logging.getLogger("asyncio").setLevel(logging.WARNING)
-        logging.getLogger("uvicorn").setLevel(logging.WARNING)
         
         self.logger = logging.getLogger(application_logger)
         self.logger.setLevel(logging.DEBUG) # nastavení úrovně vypisování hlášek - global

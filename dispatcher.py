@@ -1,6 +1,7 @@
 #dispatecher.py
 import logging
 from logger import setup_logger
+import asyncio
 
 logger = setup_logger("Dispatcher", level=logging.DEBUG)
 
@@ -33,8 +34,13 @@ class MessageDispatcher:
         cid = str(message.channel.id)
         if cid in self._watchers:
             for watcher in self._watchers[cid]:
-                await watcher.on_new_message(message)
-                logger.debug(f"Message dispatched to watcher for channel ID: {cid}")
+                try:
+                    await watcher.on_new_message(message)
+                    logger.debug(f"Message dispatched to watcher for channel ID: {cid}")
+                except asyncio.CancelledError:
+                    pass 
+                except Exception as e:
+                    logger.error(f"Error new message: {e}")
         else:
             logger.debug(f"No watchers registered for channel ID: {cid}")
 
@@ -47,8 +53,13 @@ class MessageDispatcher:
         tid = str(target_id)
         if tid in self._watchers:
             for watcher in self._watchers[tid]:
-                await watcher.on_manual_input(text, author)
-                logger.debug(f"Manual message dispatched to watcher for channel ID: {tid}")
+                try:
+                    await watcher.on_manual_input(text, author)
+                    logger.debug(f"Manual message dispatched to watcher for channel ID: {tid}")
+                except asyncio.CancelledError:
+                    pass 
+                except Exception as e:
+                    logger.error(f"Error new manual message: {e}")
         else:
             logger.debug(f"No watchers registered for target ID: {tid}")
                 
@@ -56,7 +67,13 @@ class MessageDispatcher:
         cid = str(message.channel.id)
         if cid in self._watchers:
             for watcher in self._watchers[cid]:
-                await watcher.on_message_edit(message)
+                try:
+                    await watcher.on_message_edit(message)
+                    logger.debug(f"Eddit message dispatched to watcher for channel ID: {cid}")
+                except asyncio.CancelledError:
+                    pass 
+                except Exception as e:
+                    logger.error(f"Error edit message: {e}")
 
     async def on_key_press(self, key):
         match key.lower():
@@ -67,6 +84,13 @@ class MessageDispatcher:
         for watchers_list in self._watchers.values():
             for watcher in watchers_list:
                 if watcher.manual_clear:
-                    await watcher.clear_content()
+                    try:
+                        await watcher.clear_content()
+                        logger.debug(f"Contend cleared")
+                    except asyncio.CancelledError:
+                        pass 
+                    except Exception as e:
+                        logger.error(f"Error clear contend: {e}")
+                    
 
 dispatcher = MessageDispatcher()

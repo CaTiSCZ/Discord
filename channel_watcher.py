@@ -302,36 +302,24 @@ class ChannelWatcher:
             return
         
         async with self._lock:
-            content = message.content
             if self.image_panel is not None:
-                url_pattern = r'(https?://\S+\.(?:png|jpg|jpeg|gif|webp|bmp))'
-                found_urls = re.findall(url_pattern, message.content, re.IGNORECASE)
+                found_urls = self._remove_url(message)
                 
                 if found_urls:
-                    # Přidáme nalezená URL do fronty obrázků (jako by to byly přílohy)
                     self.images.add_url_list(found_urls)
-                    # Odstraníme tato URL z textu, aby se nepsala do panelu
-                    content = re.sub(url_pattern, '', message.content).strip()
                
                 if message.attachments:
                     self.images.add_images(message.attachments)
                     logger.debug("Img received")
 
             if self.socket_panel is not None:
+                logger.debug(f"Content for text panel = {message.content}")
                 self._cleanup_expired_messages()          
-
-                modified_msg = SimpleNamespace(
-                    id=message.id,
-                    content=content,
-                    author=message.author,
-                    mentions=message.mentions,
-                    attachments=message.attachments # ponecháme pro případné další zpracování
-                )
 
                 expiry = time.time() + self.interval
                 self.active_messages.append({
                     "id": message.id,
-                    "msg_obj": modified_msg,
+                    "msg_obj": message,
                     "expiry": expiry
                 })
                 logger.debug(f"New message added: {message.id} from {message.author} (expire time {self.interval}s)")
@@ -342,6 +330,8 @@ class ChannelWatcher:
         async with self._lock:
             for m in self.active_messages:
                 if m["id"] == message.id:
+                    if self.image_panel is not None:
+                        self._remove_url(message)
                     m["msg_obj"] = message
                     logger.debug(f"message {message.id} edited.")
                     await self._refresh_display()
@@ -358,6 +348,16 @@ class ChannelWatcher:
         )
         logger.debug(f"Manual input from {author}: {text}")
         await self.on_new_message(mock_msg)
+
+    def _remove_url(self, message):
+        url_pattern = r'(https?://\S+\.(?:png|jpg|jpeg|gif|webp|bmp))'
+        found_urls = re.findall(url_pattern, message.content, re.IGNORECASE)
+        
+        if found_urls:
+            logger.debug(f"Content s URL = {message.content}")
+            message.content = re.sub(url_pattern, '', message.content).strip()
+            logger.debug(f"Content bez URL = {message.content}")
+        return found_urls
 
     async def clear_content(self):
         """Logika pro klávesu 'd' (Smart Clear)."""
