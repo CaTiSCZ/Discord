@@ -337,14 +337,16 @@ class ChannelWatcher:
                     await self._refresh_display()
                     break
 
-    async def on_manual_input(self, text, author="Manual"):
+    async def on_manual_input(self, text, author="Manual", attachments=None):
         """Vytvoření falešného objektu pro manuální vstup z GUI."""
+        if attachments is None:
+            attachments = []
         mock_msg = SimpleNamespace(
             id=int(time.time() * 1000),
             content=text,
             author=SimpleNamespace(name=author, display_name=author, bot=False),
             mentions=[],
-            attachments=[]
+            attachments=attachments
         )
         logger.debug(f"Manual input from {author}: {text}")
         await self.on_new_message(mock_msg)

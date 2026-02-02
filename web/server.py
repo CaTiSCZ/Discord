@@ -1,7 +1,7 @@
 # web/server.py
 #import asyncio
 import socketio
-from fastapi import FastAPI
+from fastapi import FastAPI, UploadFile, File
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
@@ -41,6 +41,18 @@ templates = Jinja2Templates(directory="web/templates")
 async def overlay(request: Request):
     """Zobrazí hlavní display pro OBS."""
     return templates.TemplateResponse("display.html", {"request": request})
+
+@app.post("/upload")
+async def upload_file(file: UploadFile = File(...)):
+    """Upload souboru a vrať URL."""
+    upload_dir = "web/static/uploads"
+    os.makedirs(upload_dir, exist_ok=True)
+    file_path = os.path.join(upload_dir, file.filename)
+    with open(file_path, "wb") as f:
+        f.write(await file.read())
+    url = f"http://localhost:8080/static/uploads/{file.filename}"
+    logger.debug(f"File uploaded: {file_path}, URL: {url}")
+    return {"url": url}
 
 # --- Socket.io Události ---
 

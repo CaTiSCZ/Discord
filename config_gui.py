@@ -1,15 +1,18 @@
 #config_gui.py
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 import json
 import os
 import sys
 import threading
 import asyncio
 import logging
+import requests
 import main_client
 from logger import setup_logger, CallbackHandler, Logging
 from dispatcher import dispatcher
+from image_processor import upload_image
+from PIL import ImageGrab
 
 CONFIG_FILE = "config.json"
 
@@ -67,7 +70,7 @@ class ConfigGUI:
         self.logger = setup_logger("GUI", level=logging.DEBUG)
 
         # Přidej CallbackHandler pro zápis do log panelu
-        self.gui_handler = CallbackHandler(sink_text=self.append_log, level=logging.WARNING)
+        self.gui_handler = CallbackHandler(sink_text=self.append_log, level=logging.INFO)
         self.gui_handler.setFormatter(logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"))
         logging.getLogger().addHandler(self.gui_handler)
 
@@ -246,11 +249,13 @@ class ConfigGUI:
         for gui_id, comment, watcher_idx in self.gui_watcher_list:
             frame = ttk.LabelFrame(self.gui_frame, text=f"{gui_id}: {comment}")
             frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+            
+            # Textové pole
             text = tk.Text(frame, height=10, width=30, wrap='word')
-            text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            text.pack(side=tk.TOP, fill=tk.BOTH, expand=True)
             self.gui_texts[gui_id] = text
             scroll = ttk.Scrollbar(frame, orient="vertical", command=text.yview)
-            scroll.pack(side=tk.LEFT, fill="y")
+            scroll.pack(side=tk.RIGHT, fill="y")
             text.configure(yscrollcommand=scroll.set)
             
             # --- Logika pro Enter a Shift+Enter ---
@@ -263,9 +268,44 @@ class ConfigGUI:
 
             text.bind("<Return>", handle_return)
             text.bind("<MouseWheel>", lambda e: text.yview_scroll(int(-1*(e.delta/120)), "units"))
+            text.bind("<<Paste>>", lambda e, gid=gui_id: self.paste_image(gid))
 
-            btn_send = tk.Button(frame, text="Send", command=lambda id=gui_id: self.send_gui_message(id))
-            btn_send.pack(side=tk.RIGHT, padx=5)
+            # Spodní rámec pro tlačítka
+            bottom_frame = tk.Frame(frame)
+            bottom_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=5)
+            
+            # Tlačítka
+            btn_send = tk.Button(bottom_frame, text="Send", command=lambda id=gui_id: self.send_gui_message(id))
+            btn_send.pack(side=tk.LEFT, padx=5)
+            if self.config["watchers"][watcher_idx].get("image_panel") is not None:
+                btn_file = tk.Button(bottom_frame, text="Attach File", command=lambda id=gui_id: self.select_file(id))
+                btn_file.pack(side=tk.LEFT, padx=5)
+            
+    def select_file(self, gui_id):
+        file_path = filedialog.askopenfilename(title="Select file to attach")
+        if file_path:
+            url = upload_image(file_path)
+            if url:
+                text_widget = self.gui_texts[gui_id]
+                text_widget.insert(tk.END, f"\n{url}")
+                self.logger.debug(f"File attached for {gui_id}: {url}")
+            else:
+                messagebox.showerror("Upload Error", "Failed to upload the file.")
+
+    def paste_image(self, gui_id):
+        try:
+            img = ImageGrab.grabclipboard()
+            if img:
+                temp_path = "temp_paste.png"
+                img.save(temp_path)
+                url = upload_image(temp_path)
+                if url:
+                    self.gui_texts[gui_id].insert(tk.END, f"\n{url}")
+                    self.logger.debug(f"Image pasted for {gui_id}: {url}")
+                os.remove(temp_path)
+        except Exception as e:
+            self.logger.debug(f"No image in clipboard or error: {e}")
+            # Pokud není obrázek, nechat default paste
             
     def toggle_watcher_visibility(self, var_enabled, details_frame):
             """Schová nebo zobrazí detaily watcheru."""

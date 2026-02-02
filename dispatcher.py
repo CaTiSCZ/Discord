@@ -44,7 +44,7 @@ class MessageDispatcher:
         else:
             logger.debug(f"No watchers registered for channel ID: {cid}")
 
-    async def dispatch_manual(self, target_id, text, author="Manual"):
+    async def dispatch_manual(self, target_id, text, author="Manual", attachments=None):
         """
         Doručí manuální zprávu z GUI. 
         target_id může být buď ID kanálu nebo název panelu (panel-a atd.).
@@ -54,7 +54,7 @@ class MessageDispatcher:
         if tid in self._watchers:
             for watcher in self._watchers[tid]:
                 try:
-                    await watcher.on_manual_input(text, author)
+                    await watcher.on_manual_input(text, author, attachments)
                     logger.debug(f"Manual message dispatched to watcher for channel ID: {tid}")
                 except asyncio.CancelledError:
                     pass 
