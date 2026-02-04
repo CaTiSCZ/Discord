@@ -36,7 +36,7 @@ server_instance = None
 uploaded_images = {}
 
 # Nastavení šablon a statických souborů
-templates = Jinja2Templates(directory="web/templates")
+templates = Jinja2Templates(directory="web")
 
 # --- Trasy (Routes) ---
 
@@ -45,17 +45,17 @@ async def overlay(request: Request):
     """Zobrazí hlavní display pro OBS."""
     return templates.TemplateResponse("display.html", {"request": request})
 
-@app.post("/upload")
-async def upload_file(file: UploadFile = File(...)):
-    """Upload souboru a vrať URL."""
-    upload_dir = "web/static/uploads"
-    os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, file.filename)
-    with open(file_path, "wb") as f:
-        f.write(await file.read())
-    url = f"http://127.0.0.1:8080/static/uploads/{file.filename}"
-    logger.debug(f"File uploaded: {file_path}, URL: {url}")
-    return {"url": url}
+# @app.post("/upload")
+# async def upload_file(file: UploadFile = File(...)):
+#     """Upload souboru a vrať URL."""
+#     upload_dir = "web/static/uploads"
+#     os.makedirs(upload_dir, exist_ok=True)
+#     file_path = os.path.join(upload_dir, file.filename)
+#     with open(file_path, "wb") as f:
+#         f.write(await file.read())
+#     url = f"http://127.0.0.1:8080/static/uploads/{file.filename}"
+#     logger.debug(f"File uploaded: {file_path}, URL: {url}")
+#     return {"url": url}
 
 @app.post("/upload_b64")
 async def upload_b64(data: dict):
@@ -64,11 +64,11 @@ async def upload_b64(data: dict):
     filename = data['filename']
     uploaded_images[filename] = base64.b64decode(img_b64)
     logger.debug(f"Stored image: {filename}, size: {len(uploaded_images[filename])}")
-    url = f"http://127.0.0.1:8080/static/uploads/{urllib.parse.quote(filename)}"
+    url = f"http://127.0.0.1:8080/images-storage/{urllib.parse.quote(filename)}"
     logger.debug(f"Base64 image uploaded to memory: {filename}, URL: {url}")
     return {"url": url}
 
-@app.get("/static/uploads/{filename}")
+@app.get("/images-storage/{filename}")
 async def get_uploaded_image(filename: str):
     """Serve uploaded image from memory."""
     logger.debug(f"Requesting image: {filename}")
@@ -81,7 +81,7 @@ async def get_uploaded_image(filename: str):
         logger.debug(f"Image not found: {filename}")
         return Response(status_code=404, content="Image not found")
 
-@app.delete("/static/uploads/{filename}")
+@app.delete("/images-storage/{filename}")
 async def delete_uploaded_image(filename: str):
     """Delete uploaded image from memory."""
     logger.debug(f"Deleting image: {filename}")
@@ -93,8 +93,8 @@ async def delete_uploaded_image(filename: str):
         logger.debug(f"Image not found for deletion: {filename}")
         return Response(status_code=404, content="Image not found")
 
-# Mount static files after routes to allow routes to take precedence
-app.mount("/static", StaticFiles(directory="web/static"), name="static")
+# Mount web directory as static files after routes to allow routes to take precedence
+app.mount("/", StaticFiles(directory="web", html=False), name="web")
 
 # --- Socket.io Události ---
 

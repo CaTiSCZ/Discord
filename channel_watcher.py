@@ -268,7 +268,7 @@ class ImageQueue:
             while self.running:
                 try:
                     filename = await self.deletion_queue.get()
-                    async with session.delete(f"http://127.0.0.1:8080/static/uploads/{filename}") as response:
+                    async with session.delete(f"http://127.0.0.1:8080/images-storage/{filename}") as response:
                         if response.status == 204:
                             logger.debug(f"Image deleted from memory: {filename}")
                         else:
