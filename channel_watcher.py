@@ -8,6 +8,7 @@ import time
 from collections import deque
 from logger import setup_logger
 from dispatcher import dispatcher
+import aiohttp
 
 logger = setup_logger("ChannelWatcher", level=logging.DEBUG)
 
@@ -221,8 +222,10 @@ class ImageQueue:
         self.sio = sio
 
         self.images_queue = deque()
+        self.deletion_queue = asyncio.Queue()
         self.running = True
         asyncio.create_task(self._print_image())
+        asyncio.create_task(self._process_deletions())
 
     def add_url_list(self, urls):
         """Přidá seznam čistých URL adres do fronty"""
@@ -247,6 +250,9 @@ class ImageQueue:
                         })
                 logger.debug(f"Img sent - {image} to {self.panel}")
                 await asyncio.sleep(self.interval)
+                # Schedule deletion
+                filename = image.split('/')[-1]
+                await self.deletion_queue.put(filename)
                 if not self.images_queue:
                     await self.sio.emit("new_image", {
                         "panel": self.panel, 
@@ -254,7 +260,22 @@ class ImageQueue:
                     })
                     logger.debug("Img deleted")
             else:
-                await asyncio.sleep(1)        
+                await asyncio.sleep(1)
+        
+    async def _process_deletions(self):
+        """Process deletion queue in a single task."""
+        async with aiohttp.ClientSession() as session:
+            while self.running:
+                try:
+                    filename = await self.deletion_queue.get()
+                    async with session.delete(f"http://127.0.0.1:8080/static/uploads/{filename}") as response:
+                        if response.status == 204:
+                            logger.debug(f"Image deleted from memory: {filename}")
+                        else:
+                            logger.debug(f"Failed to delete image {filename}: {response.status}")
+                    self.deletion_queue.task_done()
+                except Exception as e:
+                    logger.debug(f"Failed to delete image: {e}")        
         
 class ChannelWatcher:
     def __init__(self, client, config, sio):

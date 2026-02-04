@@ -14,7 +14,7 @@ html, body {
 .panel {
   position: absolute;
   box-sizing: border-box;
-  border: 2px solid rgba(255, 255, 255, 0);
+  border: 2px solid rgba(255, 255, 255, 0.0);
   padding: 10px;
   overflow: hidden;
 }
@@ -23,7 +23,7 @@ html, body {
 
 /* Panel A – iniciativa */
 #panel-a {
-  top: 700px;
+  top: 680px;
   left: 2px;
   width: auto;
   max-width: 2000px;
@@ -34,7 +34,7 @@ html, body {
 
 /* Panel B – hody kostkou */
 #panel-b {
-  top: 1060px;
+  top: 1020px;
   left: 2px;
   width: auto;
   max-width: 2556px;
@@ -43,8 +43,8 @@ html, body {
   z-index: 1;
 }
 #panel-c {
-  top: 700px;
-  left: 1230px;
+  top: 680px;
+  left: 1260px;
   width: auto;
   max-width: 2000px;
   height: auto;

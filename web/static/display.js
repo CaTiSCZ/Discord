@@ -32,6 +32,9 @@ socket.on("new_image", (data) => {
         imgElement.onload = () => {
             imgElement.classList.add("visible");
         };
+        imgElement.onerror = () => {
+            console.log("Image failed to load:", data.url);
+        };
     } else {
         // Schování obrázku
         imgElement.classList.remove("visible");

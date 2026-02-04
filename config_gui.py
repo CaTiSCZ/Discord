@@ -11,7 +11,7 @@ import requests
 import main_client
 from logger import setup_logger, CallbackHandler, Logging
 from dispatcher import dispatcher
-from image_processor import upload_image
+from image_processor import upload_image, upload_image_from_pil
 from PIL import ImageGrab
 
 CONFIG_FILE = "config.json"
@@ -296,13 +296,10 @@ class ConfigGUI:
         try:
             img = ImageGrab.grabclipboard()
             if img:
-                temp_path = "temp_paste.png"
-                img.save(temp_path)
-                url = upload_image(temp_path)
+                url = upload_image_from_pil(img)
                 if url:
                     self.gui_texts[gui_id].insert(tk.END, f"\n{url}")
                     self.logger.debug(f"Image pasted for {gui_id}: {url}")
-                os.remove(temp_path)
         except Exception as e:
             self.logger.debug(f"No image in clipboard or error: {e}")
             # Pokud není obrázek, nechat default paste
