@@ -13,6 +13,7 @@ from logger import setup_logger, CallbackHandler, Logging
 from dispatcher import dispatcher
 from image_processor import upload_image, upload_image_from_pil
 from PIL import ImageGrab
+import tkinterdnd2 as tkdnd
 
 CONFIG_FILE = "config.json"
 
@@ -269,6 +270,9 @@ class ConfigGUI:
             text.bind("<Return>", handle_return)
             text.bind("<MouseWheel>", lambda e: text.yview_scroll(int(-1*(e.delta/120)), "units"))
             text.bind("<<Paste>>", lambda e, gid=gui_id: self.paste_image(gid))
+            text.drop_target_register(tkdnd.DND_FILES)
+            text.dnd_bind('<<DropEnter>>', lambda e: self.on_drop_enter(e))
+            text.dnd_bind('<<Drop>>', lambda e, gid=gui_id: self.on_drop(e, gid))
 
             # Spodní rámec pro tlačítka
             bottom_frame = tk.Frame(frame)
@@ -587,6 +591,41 @@ class ConfigGUI:
         else:
             self.logger.warning("Bot not running, cannot dispatch manual message.")
 
+    def on_drop_enter(self, event):
+        """Handler pro drop enter - umožní drop."""
+        event.widget.focus_force()
+        return event.action
+
+    def on_drop(self, event, gui_id):
+        """Handler pro drop souborů."""
+        self.logger.debug(f"Drop data: {event.data}")
+        try:
+            files = event.widget.tk.splitlist(event.data)  # Proper parsing for file lists
+        except Exception as e:
+            self.logger.error(f"Failed to parse drop data: {e}")
+            files = []
+        self.logger.debug(f"Parsed files: {files}")
+        for file_path in files:
+            file_path = file_path.strip()  # Remove any extra whitespace
+            self.logger.debug(f"Processing file: {file_path}")
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']:
+                    url = upload_image(file_path)
+                    if url:
+                        text_widget = self.gui_texts[gui_id]
+                        text_widget.insert(tk.END, f"\n{url}")
+                        self.logger.debug(f"File dropped for {gui_id}: {url}")
+                    else:
+                        messagebox.showerror("Upload Error", f"Failed to upload {file_path}.")
+                        self.logger.error(f"Failed to upload {file_path}.")
+                else:
+                    messagebox.showwarning("Unsupported File", f"File {file_path} is not a supported image type.")
+                    self.logger.warning(f"Unsupported file type dropped: {file_path}")
+            else:
+                messagebox.showwarning("Invalid File", f"{file_path} is not a valid file.")
+                self.logger.warning(f"Invalid file dropped: {file_path}")
+
     # ----------------------------------------------------------------
     def on_close(self):
         if self.bot_running:
@@ -597,6 +636,6 @@ class ConfigGUI:
         sys.exit(0)
 
 # --------------------------------------------------------------------
-root = tk.Tk()
+root = tkdnd.Tk()
 ConfigGUI(root)
 root.mainloop()
