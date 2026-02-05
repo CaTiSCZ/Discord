@@ -10,6 +10,7 @@ class MessageDispatcher:
         # Mapa: channel_id (string) -> list instancí ChannelWatcher
         self._watchers = {}
         self.connection_callback = None
+        self.loop = None
 
     def set_connection_callback(self, callback):
         """GUI si sem zaregistruje svou funkci pro změnu barvy kolečka."""

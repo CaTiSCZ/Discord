@@ -7,13 +7,15 @@ import sys
 import threading
 import asyncio
 import logging
-import requests
+from PIL import ImageGrab, Image, ImageTk
+import tkinterdnd2 as tkdnd
+
 import main_client
 from logger import setup_logger, CallbackHandler, Logging
 from dispatcher import dispatcher
 from image_processor import upload_image, upload_image_from_pil
-from PIL import ImageGrab
-import tkinterdnd2 as tkdnd
+from web.server import sio
+
 
 CONFIG_FILE = "config.json"
 
@@ -34,6 +36,18 @@ DEFAULT_WATCHER = {
     "header_text": "",
     "column_spacing": 2,
     "gui_watcher": False,    
+}
+
+DEFAULT_LAYOUT = {
+    "canvas": {"width": 2560, "height": 1440, "bg_preview": ""},
+    "panels": {
+        "panel-a": {"x": 2, "y": 680, "z_index": 5, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
+        "panel-b": {"x": 2, "y": 1020, "z_index": 5, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
+        "panel-c": {"x": 1260, "y": 680, "z_index": 5, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
+        "panel-d": {"x": 2, "y": 2, "z_index": 10, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
+        "panel-e": {"x": 2, "y": 1300, "width": 2556, "height": 100, "z_index": 5,"font_size": 40, "color": "#ffffff", "bold": False, "italic": False},
+        "panel-o": {"x": 2, "y": 2, "width" :2556,"height" :1434,"z_index" :0}
+    }
 }
 
 def set_widget_state(widget, enable=False):
@@ -103,14 +117,14 @@ class ConfigGUI:
         token_frame.pack(anchor="w", padx=10, pady=5)
         
         tk.Label(token_frame, text="Discord BOT TOKEN:", font=("Arial", 12, "bold")).pack(side="left", padx=(0, 10))
-        self.token_entry = tk.Entry(token_frame, width=80)
+        self.token_entry = tk.Entry(token_frame, width=100)
         self.token_entry.pack(side="left", fill="x", expand=True)
         self.token_entry.insert(0, self.config.get("TOKEN", ""))
         self.lockable["token"] = self.token_entry
 
         # BUTTONS (pod tokenem)       
         btn_frame = tk.Frame(root)
-        btn_frame.pack(pady=5)
+        btn_frame.pack(fill=tk.X, padx=10, pady=5)
         tk.Label(btn_frame, text="Socket:").pack(side=tk.LEFT, padx=(0, 2))
         self.conn_canvas = tk.Canvas(btn_frame, width=16, height=16, highlightthickness=0)
         self.conn_canvas.pack(side=tk.LEFT, padx=5)
@@ -118,14 +132,22 @@ class ConfigGUI:
         dispatcher.set_connection_callback(self.update_connection_led)
 
         ttk.Separator(btn_frame, orient='vertical').pack(side=tk.LEFT, padx=10, fill='y')
+        ttk.Label(btn_frame, text="Watchers:").pack(side=tk.LEFT, padx=(0, 2))
         addW = tk.Button(btn_frame, text="Add Watcher", command=self.add_watcher)
         addW.pack(side="left", padx=5)
         saveBtn = tk.Button(btn_frame, text="Save Configuration", command=self.save_config)
         saveBtn.pack(side="left", padx=5)
+
+        ttk.Separator(btn_frame, orient='horizontal').pack(side=tk.LEFT, padx=30, fill='y')  # Větší mezera před Run Bot
+        ttk.Label(btn_frame, text="Bot Control:").pack(side=tk.LEFT, padx=(0, 2))
         run = tk.Button(btn_frame, text="Run Bot", command=self.run_bot)
         run.pack(side="left", padx=5)
-        tk.Button(btn_frame, text="Delete Files (d)", command=self.safe_dispatch_clear).pack(side="left", padx=5)
         tk.Button(btn_frame, text="Quit Bot (q)", command=self.stop_bot).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Delete Messages (d)", command=self.safe_dispatch_clear).pack(side="left", padx=5)
+        tk.Button(btn_frame, text="Web Settings", command=self.open_web_settings).pack(side="right", padx=5)
+
+        #ttk.Separator(btn_frame, orient='horizontal').pack(side=tk.RIGHT, padx=10)  # Větší mezera před Web Settings
+
         self.lockable["ADD"] = addW
         self.lockable["SAVE"] = saveBtn
         self.lockable["RUN"] = run
@@ -203,7 +225,9 @@ class ConfigGUI:
         color = "green" if is_connected else "red"
         self.root.after(0, lambda: self.conn_canvas.itemconfig(self.conn_dot, fill=color))
 
-    # ----------------------------------------------------------------
+    def open_web_settings(self):
+        WebSettingsWindow(self.root, self.config)
+    
     def load_config(self):
         if not os.path.exists(CONFIG_FILE):
             return {"TOKEN": "", "watchers": []}
@@ -220,13 +244,14 @@ class ConfigGUI:
                 clean.append(new_w)
 
             cfg["watchers"] = clean
+            if "web_layout" not in cfg:
+                cfg["web_layout"] = DEFAULT_LAYOUT
             return cfg
 
         except json.JSONDecodeError:
             messagebox.showerror("Error", "config.json is corrupted. Creating a new one.")
             return {"TOKEN": "", "watchers": []}
 
-    # ----------------------------------------------------------------
     def render_watchers(self):
         for w in self.scroll_frame.winfo_children():
             w.destroy()
@@ -306,7 +331,41 @@ class ConfigGUI:
                     self.logger.debug(f"Image pasted for {gui_id}: {url}")
         except Exception as e:
             self.logger.debug(f"No image in clipboard or error: {e}")
-            # Pokud není obrázek, nechat default paste
+    
+    def on_drop_enter(self, event):
+        """Handler pro drop enter - umožní drop."""
+        event.widget.focus_force()
+        return event.action
+
+    def on_drop(self, event, gui_id):
+        """Handler pro drop souborů."""
+        self.logger.debug(f"Drop data: {event.data}")
+        try:
+            files = event.widget.tk.splitlist(event.data)  # Proper parsing for file lists
+        except Exception as e:
+            self.logger.error(f"Failed to parse drop data: {e}")
+            files = []
+        self.logger.debug(f"Parsed files: {files}")
+        for file_path in files:
+            file_path = file_path.strip()  # Remove any extra whitespace
+            self.logger.debug(f"Processing file: {file_path}")
+            if os.path.isfile(file_path):
+                ext = os.path.splitext(file_path)[1].lower()
+                if ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']:
+                    url = upload_image(file_path)
+                    if url:
+                        text_widget = self.gui_texts[gui_id]
+                        text_widget.insert(tk.END, f"\n{url}")
+                        self.logger.debug(f"File dropped for {gui_id}: {url}")
+                    else:
+                        messagebox.showerror("Upload Error", f"Failed to upload {file_path}.")
+                        self.logger.error(f"Failed to upload {file_path}.")
+                else:
+                    messagebox.showwarning("Unsupported File", f"File {file_path} is not a supported image type.")
+                    self.logger.warning(f"Unsupported file type dropped: {file_path}")
+            else:
+                messagebox.showwarning("Invalid File", f"{file_path} is not a valid file.")
+                self.logger.warning(f"Invalid file dropped: {file_path}")
             
     def toggle_watcher_visibility(self, var_enabled, details_frame):
             """Schová nebo zobrazí detaily watcheru."""
@@ -314,7 +373,7 @@ class ConfigGUI:
                 details_frame.pack(fill="x", padx=15, pady=5, after=details_frame.master.winfo_children()[0])
             else:
                 details_frame.pack_forget()
-    # ----------------------------------------------------------------
+
     def render_one_watcher(self, parent_frame, idx, watcher):
         watcher_wrapper = ttk.Frame(parent_frame)
         watcher_wrapper.pack(fill="x", padx=5, pady=5)
@@ -436,17 +495,14 @@ class ConfigGUI:
         # 4. NASTAVENÍ POČÁTEČNÍ VIDITELNOSTI
         self.toggle_watcher_visibility(enabled_var, details_frame)
         
-    # ----------------------------------------------------------------
     def add_watcher(self):
         self.config["watchers"].append(DEFAULT_WATCHER.copy())
         self.render_watchers()
 
-    # ----------------------------------------------------------------
     def remove_watcher(self, idx):
         del self.config["watchers"][idx]
         self.render_watchers()
 
-    # ----------------------------------------------------------------
     def save_config(self):
         try:
             self.config["TOKEN"] = self.token_entry.get()
@@ -513,13 +569,13 @@ class ConfigGUI:
         except Exception as e:
             self.logger.error(f"Error saving configuration: {e}")
 
-    # ----------------------------------------------------------------
     def run_bot(self):
         if self.bot_running:
             self.logger.warning("Bot already running.")
             return
 
         self.save_config()
+        dispatcher.config = self.config
 
         self.logger.debug("Discord bot launched. Inputs locked.")
         self.engine = main_client.DiscordEngine(self.config)
@@ -534,7 +590,6 @@ class ConfigGUI:
         for widget in self.lockable.values():
             set_widget_state(widget, enable=False)
         
-    # ----------------------------------------------------------------
     def stop_bot(self, wait_secs: float = 1.0):
         if not self.bot_running:
             self.logger.warning("Bot is not running.")
@@ -556,7 +611,6 @@ class ConfigGUI:
             if widget: 
                 set_widget_state(widget, enable=True)
 
-    # ----------------------------------------------------------------
     def on_key_press(self, event):
         """Handler pro stisk klávesy v GUI okně."""
         focus = self.root.focus_get()
@@ -591,42 +645,6 @@ class ConfigGUI:
         else:
             self.logger.warning("Bot not running, cannot dispatch manual message.")
 
-    def on_drop_enter(self, event):
-        """Handler pro drop enter - umožní drop."""
-        event.widget.focus_force()
-        return event.action
-
-    def on_drop(self, event, gui_id):
-        """Handler pro drop souborů."""
-        self.logger.debug(f"Drop data: {event.data}")
-        try:
-            files = event.widget.tk.splitlist(event.data)  # Proper parsing for file lists
-        except Exception as e:
-            self.logger.error(f"Failed to parse drop data: {e}")
-            files = []
-        self.logger.debug(f"Parsed files: {files}")
-        for file_path in files:
-            file_path = file_path.strip()  # Remove any extra whitespace
-            self.logger.debug(f"Processing file: {file_path}")
-            if os.path.isfile(file_path):
-                ext = os.path.splitext(file_path)[1].lower()
-                if ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp', '.bmp']:
-                    url = upload_image(file_path)
-                    if url:
-                        text_widget = self.gui_texts[gui_id]
-                        text_widget.insert(tk.END, f"\n{url}")
-                        self.logger.debug(f"File dropped for {gui_id}: {url}")
-                    else:
-                        messagebox.showerror("Upload Error", f"Failed to upload {file_path}.")
-                        self.logger.error(f"Failed to upload {file_path}.")
-                else:
-                    messagebox.showwarning("Unsupported File", f"File {file_path} is not a supported image type.")
-                    self.logger.warning(f"Unsupported file type dropped: {file_path}")
-            else:
-                messagebox.showwarning("Invalid File", f"{file_path} is not a valid file.")
-                self.logger.warning(f"Invalid file dropped: {file_path}")
-
-    # ----------------------------------------------------------------
     def on_close(self):
         if self.bot_running:
             self.stop_bot()
@@ -635,7 +653,238 @@ class ConfigGUI:
         self.root.destroy()
         sys.exit(0)
 
-# --------------------------------------------------------------------
+class WebSettingsWindow(tk.Toplevel):
+    def __init__(self, parent, config):
+        super().__init__(parent)
+
+        self.logging_ctx = Logging()
+        self.logger = setup_logger("Web Settings", level=logging.DEBUG)
+
+        self.title("Web Layout Editor & Layer Manager")
+        #self.geometry("1100x750")
+        self.config_data = config
+        self.layout_cfg = config.get("web_layout", {})
+        
+        # Měřítko pro zobrazení
+        self.scale = 0.3
+        self.canvas_w = int(self.layout_cfg["canvas"]["width"] * self.scale)
+        self.canvas_h = int(self.layout_cfg["canvas"]["height"] * self.scale)
+        
+        self.active_panel_id = None
+        self._drag_data = {"x": 0, "y": 0, "item": None}
+        self.bg_image_tk = None # Reference pro GC
+
+        self.setup_ui()
+        self.load_bg_from_config() # Automatické načtení
+        self.refresh_layer_table()
+        self.draw_panels()
+
+    def setup_ui(self):
+        self.paned = ttk.PanedWindow(self, orient=tk.HORIZONTAL)
+        self.paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        # LEVÁ STRANA - CANVAS
+        self.left_frame = ttk.Frame(self.paned)
+        self.canvas = tk.Canvas(
+            self.left_frame, width=self.canvas_w, height=self.canvas_h, 
+            bg="#1a1a1a", highlightthickness=2, highlightbackground="#444444"
+        )
+        self.canvas.pack(pady=5)
+        
+        # Bindování myši
+        self.canvas.bind("<ButtonPress-1>", self.on_start_drag)
+        self.canvas.bind("<B1-Motion>", self.on_drag)
+        self.canvas.bind("<ButtonRelease-1>", self.on_stop_drag)
+        
+        self.paned.add(self.left_frame, weight=3)
+
+        # Tlačítka pro ukládání a aplikaci
+        action_frame = ttk.Frame(self.left_frame, padding=5)
+        action_frame.pack(side=tk.TOP, fill=tk.X, pady=5)
+        
+        ttk.Button(action_frame, text="Change Background", command=self.change_bg).pack(side=tk.LEFT, expand=True, fill=tk.X, pady=2)
+        ttk.Button(action_frame, text="Apply to OBS", command=self.apply_to_obs).pack(side=tk.LEFT, expand=True, fill=tk.X, pady=2)
+        ttk.Button(action_frame, text="Save & Close", command=self.apply_and_close, style="Accent.TButton").pack(side=tk.LEFT, expand=True, fill=tk.X, pady=2)
+
+        # PRAVÁ STRANA - CONTROL
+        self.right_frame = ttk.Frame(self.paned)
+        self.paned.add(self.right_frame, weight=1)
+
+        # Tabulka vrstev
+        ttk.Label(self.right_frame, text="Panels (Select to Move):").pack(anchor="w")
+        tree_container = ttk.Frame(self.right_frame)
+        tree_container.pack(fill=tk.X, pady=5)
+        num_panels = len(self.layout_cfg.get("panels", {}))
+        tree_height = min(max(2, num_panels), 12)
+        self.tree = ttk.Treeview(tree_container, columns=("name", "z"), show="headings", height=tree_height)
+        self.tree.heading("name", text="Panel Name")
+        self.tree.heading("z", text="Z")
+        self.tree.column("name", width=80)
+        self.tree.column("z", width=40, anchor="center")
+        self.tree.pack(fill=tk.X, expand=False, pady=5)
+
+        scrollbar = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=scrollbar.set)
+        self.tree.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        self.tree.bind("<<TreeviewSelect>>", self.on_layer_selected)
+
+        z_frame = ttk.Frame(self.right_frame)
+        z_frame.pack(fill=tk.X, pady=5)
+        ttk.Button(z_frame, text="▲ Move Up", command=lambda: self.change_z(1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
+        ttk.Button(z_frame, text="▼ Move Down", command=lambda: self.change_z(-1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
+
+        self.edit_frame = ttk.LabelFrame(self.right_frame, text="Panel Position", padding=10)
+        self.edit_frame.pack(fill=tk.X, pady=10)
+
+        self.vars = {
+            "x": tk.IntVar(), "y": tk.IntVar(),
+            "width": tk.IntVar(), "height": tk.IntVar()
+        }
+        
+        for i, (label, var) in enumerate(self.vars.items()):
+            ttk.Label(self.edit_frame, text=f"{label.capitalize()}:").grid(row=i, column=0, sticky="w", pady=2)
+            ttk.Entry(self.edit_frame, textvariable=var, width=10).grid(row=i, column=1, sticky="w", padx=5)
+        
+        ttk.Button(self.edit_frame, text="Apply Geometry", command=self.manual_update).grid(row=4, column=0, columnspan=2, pady=10, sticky="ew")
+
+        
+
+    def load_bg_from_config(self):
+        """Načte obrázek cesty uložené v JSONu."""
+        path = self.layout_cfg["canvas"].get("bg_preview", "")
+        if path and os.path.exists(path):
+            try:
+                img = Image.open(path)
+                img = img.resize((self.canvas_w, self.canvas_h), Image.Resampling.LANCZOS)
+                self.bg_image_tk = ImageTk.PhotoImage(img)
+                self.canvas.create_image(0, 0, anchor="nw", image=self.bg_image_tk, tags="bg_img")
+                self.canvas.tag_lower("bg_img")
+            except Exception as e:
+                print(f"Error loading bg: {e}")
+
+    def change_bg(self):
+        path = filedialog.askopenfilename(filetypes=[("Images", "*.png *.jpg *.jpeg")])
+        if path:
+            self.layout_cfg["canvas"]["bg_preview"] = path
+            self.load_bg_from_config()
+
+    def refresh_layer_table(self):
+        selected_id = self.active_panel_id
+        for i in self.tree.get_children(): self.tree.delete(i)
+        
+        panels = self.layout_cfg.get("panels", {})
+        # Seřadíme podle Z-indexu sestupně, aby vrchní byly v tabulce nahoře
+        sorted_panels = sorted(panels.items(), key=lambda x: x[1].get("z_index", 0), reverse=True)
+        
+        for p_id, info in sorted_panels:
+            self.tree.insert("", tk.END, iid=p_id, values=(p_id, info.get("z_index", 0)))
+        new_hight = min(max(2, len(panels)), 12)
+        self.tree.configure(height=new_hight)
+        self.right_frame.update_idletasks()
+        if selected_id and self.tree.exists(selected_id):
+            self.tree.selection_set(selected_id)
+
+    def draw_panels(self):
+        self.canvas.delete("panel")
+        # Kreslíme od nejnižšího Z-indexu po nejvyšší
+        panels = self.layout_cfg.get("panels", {})
+        sorted_keys = sorted(panels.keys(), key=lambda k: panels[k].get("z_index", 0))
+        
+        for p_id in sorted_keys:
+            p_info = panels[p_id]
+            is_active = (p_id == self.active_panel_id)
+            x, y = p_info["x"] * self.scale, p_info["y"] * self.scale
+            w = p_info.get("width", 200) * self.scale
+            h = p_info.get("height", 100) * self.scale
+
+            color = "#0078d7" if is_active else "#555555"
+            self.canvas.create_rectangle(x, y, x+w, y+h, fill=color, outline="white", width=2 if is_active else 1, tags=("panel", p_id), stipple="gray50" if not is_active else "")
+            self.canvas.create_text(x + 5, y + 5, text=p_id, anchor="nw", fill="white", tags=("panel", p_id))
+        
+        self.canvas.tag_lower("bg_img")
+
+    def on_layer_selected(self, event):
+        selected = self.tree.selection()
+        if selected:
+            self.active_panel_id = selected[0]
+            p = self.layout_cfg["panels"][self.active_panel_id]
+            self.vars["x"].set(p["x"])
+            self.vars["y"].set(p["y"])
+            self.vars["width"].set(p.get("width", 200)) # Default 200
+            self.vars["height"].set(p.get("height", 100)) # Default 100
+            self.draw_panels()
+
+    def change_z(self, delta):
+        if self.active_panel_id:
+            p = self.layout_cfg["panels"][self.active_panel_id]
+            # Změníme hodnotu přímo v slovníku layout_cfg
+            p["z_index"] = p.get("z_index", 0) + delta
+            self.refresh_layer_table()
+            self.draw_panels()
+
+    def manual_update(self):
+        if self.active_panel_id:
+            p = self.layout_cfg["panels"][self.active_panel_id]
+            p["x"] = self.vars["x"].get()
+            p["y"] = self.vars["y"].get()
+            p["width"] = self.vars["width"].get()
+            p["height"] = self.vars["height"].get()
+            self.draw_panels()
+
+    def on_start_drag(self, event):
+        if not self.active_panel_id: return
+        items = self.canvas.find_overlapping(event.x, event.y, event.x, event.y)
+        if any(self.active_panel_id in self.canvas.gettags(i) for i in items):
+            self._drag_data.update({"item": self.active_panel_id, "x": event.x, "y": event.y})
+
+    def on_drag(self, event):
+        if self._drag_data["item"]:
+            dx, dy = event.x - self._drag_data["x"], event.y - self._drag_data["y"]
+            self.canvas.move(self._drag_data["item"], dx, dy)
+            self._drag_data.update({"x": event.x, "y": event.y})
+            # Update políček v reálném čase
+            bbox = self.canvas.bbox(self._drag_data["item"])
+            self.val_x.set(int(bbox[0] / self.scale))
+            self.val_y.set(int(bbox[1] / self.scale))
+
+    def on_stop_drag(self, event):
+        if self._drag_data["item"]:
+            self.manual_update()
+            self._drag_data["item"] = None
+
+    def apply_to_obs(self):
+        # Kontrola, zda bot vůbec běží přes main_client.engine
+        # (předpokládáme, že engine má v sobě loop nebo běží v asyncio)
+        try:
+            if dispatcher.loop and dispatcher.loop.is_running():
+                try:
+                    asyncio.run_coroutine_threadsafe(
+                        sio.emit("init_layout", self.layout_cfg), 
+                        dispatcher.loop
+                    )
+                except Exception as e:
+                    self.logger.error(f"Error sending to OBS: {e}")
+            else:
+                messagebox.showwarning(
+                    "Bot Not Running", 
+                    "Layout saved to file, but could not be sent to OBS. Start the bot to update the live overlay."
+                )
+        except Exception as e:
+            # Zachytíme případné jiné chyby, aby aplikace nespadla
+            self.logger.error(f"Silent error in apply_to_obs: {e}")
+
+    def apply_and_close(self):
+        self.config_data["web_layout"] = self.layout_cfg
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.config_data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save config.json: {e}")
+        self.apply_to_obs() # Poslat do OBS před zavřením
+        self.destroy()
+        
+
 root = tkdnd.Tk()
 ConfigGUI(root)
 root.mainloop()

@@ -45,18 +45,6 @@ async def overlay(request: Request):
     """Zobrazí hlavní display pro OBS."""
     return templates.TemplateResponse("display.html", {"request": request})
 
-# @app.post("/upload")
-# async def upload_file(file: UploadFile = File(...)):
-#     """Upload souboru a vrať URL."""
-#     upload_dir = "web/static/uploads"
-#     os.makedirs(upload_dir, exist_ok=True)
-#     file_path = os.path.join(upload_dir, file.filename)
-#     with open(file_path, "wb") as f:
-#         f.write(await file.read())
-#     url = f"http://127.0.0.1:8080/static/uploads/{file.filename}"
-#     logger.debug(f"File uploaded: {file_path}, URL: {url}")
-#     return {"url": url}
-
 @app.post("/upload_b64")
 async def upload_b64(data: dict):
     """Upload base64 image and return URL."""
@@ -114,6 +102,10 @@ async def connect(sid, environ):
     # Teď bude log vypadat mnohem lépe
     logger.info(f"Connection opened: {client_name} ")
     logger.debug(f"Technical SID: {sid}, (IP: {ip}), User-Agent: {user_agent}")
+    
+    current_layout = getattr(dispatcher, 'config', {}).get("web_layout", {})
+    
+    await sio.emit("init_layout", current_layout, room=sid)
     await dispatcher.update_connection_status(True)
 
 @sio.event

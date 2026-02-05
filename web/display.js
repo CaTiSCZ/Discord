@@ -59,3 +59,25 @@ socket.on("clear_messages", (data) => {
 socket.on("disconnect", () => {
   console.log("Socket.io disconnected");
 });
+
+socket.on("init_layout", (config) => {
+    console.log("Loading layout from server:", config);
+    if (!config || !config.panels) return;
+
+    for (const [id, settings] of Object.entries(config.panels)) {
+        const el = document.getElementById(id);
+        if (el) {
+            el.style.left = settings.x + "px";
+            el.style.top = settings.y + "px";
+            
+            // Pokud je to textový panel, najdeme i content-area
+            const content = document.getElementById(id + "-content");
+            if (content) {
+                if (settings.font_size) content.style.fontSize = settings.font_size + "px";
+                if (settings.color) content.style.color = settings.color;
+                if (settings.bold !== undefined) content.style.fontWeight = settings.bold ? "bold" : "normal";
+                if (settings.italic !== undefined) content.style.fontStyle = settings.italic ? "italic" : "normal";
+            }
+        }
+    }
+});
