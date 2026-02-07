@@ -1,6 +1,6 @@
 #config_gui.py
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox, filedialog, colorchooser
 import json
 import os
 import sys
@@ -40,6 +40,19 @@ DEFAULT_WATCHER = {
 
 DEFAULT_LAYOUT = {
     "canvas": {"width": 2560, "height": 1440, "bg_preview": ""},
+    "global_style": {
+        "font_family": "monospace",
+        "font_size": 24,
+        "color": "#ffffff",
+        "b_color": "#e0e0e0", # Výchozí barva pro tučné
+        "b_size": "",
+        "i_color": "#e0e0e0", # Výchozí barva pro kurzívu
+        "i_size": "",
+        "u_color": "#ffffff",
+        "u_size": "",
+        "s_color": "#888888",
+        "s_size": ""
+    },
     "panels": {
         "panel-a": {"x": 2, "y": 680, "z_index": 5, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
         "panel-b": {"x": 2, "y": 1020, "z_index": 5, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
@@ -656,6 +669,7 @@ class ConfigGUI:
 class WebSettingsWindow(tk.Toplevel):
     def __init__(self, parent, config):
         super().__init__(parent)
+        self.transient(parent)
 
         self.logging_ctx = Logging()
         self.logger = setup_logger("Web Settings", level=logging.DEBUG)
@@ -715,7 +729,7 @@ class WebSettingsWindow(tk.Toplevel):
         tree_container = ttk.Frame(self.right_frame)
         tree_container.pack(fill=tk.X, pady=5)
         num_panels = len(self.layout_cfg.get("panels", {}))
-        tree_height = min(max(2, num_panels), 12)
+        tree_height = min(max(2, num_panels), 10)
         self.tree = ttk.Treeview(tree_container, columns=("name", "z"), show="headings", height=tree_height)
         self.tree.heading("name", text="Panel Name")
         self.tree.heading("z", text="Z")
@@ -734,21 +748,41 @@ class WebSettingsWindow(tk.Toplevel):
         ttk.Button(z_frame, text="▲ Move Up", command=lambda: self.change_z(1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
         ttk.Button(z_frame, text="▼ Move Down", command=lambda: self.change_z(-1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
 
-        self.edit_frame = ttk.LabelFrame(self.right_frame, text="Panel Position", padding=10)
-        self.edit_frame.pack(fill=tk.X, pady=10)
+        self.prop_frame = ttk.LabelFrame(self.right_frame, text="Panel Geometry (px)", padding=10)
+        self.prop_frame.pack(fill=tk.X, pady=5)
 
         self.vars = {
             "x": tk.IntVar(), "y": tk.IntVar(),
-            "width": tk.IntVar(), "height": tk.IntVar()
+            "width": tk.IntVar(), "height": tk.IntVar(),
+           "z_index" : tk.IntVar(), "auto_size": tk.BooleanVar(value=True)
         }
-        
-        for i, (label, var) in enumerate(self.vars.items()):
-            ttk.Label(self.edit_frame, text=f"{label.capitalize()}:").grid(row=i, column=0, sticky="w", pady=2)
-            ttk.Entry(self.edit_frame, textvariable=var, width=10).grid(row=i, column=1, sticky="w", padx=5)
-        
-        ttk.Button(self.edit_frame, text="Apply Geometry", command=self.manual_update).grid(row=4, column=0, columnspan=2, pady=10, sticky="ew")
 
+        # Pomocná funkce pro vytvoření řádku se dvěma poli
+        def create_geo_row(parent, label1, var1, label2, var2):
+            row = ttk.Frame(parent)
+            row.pack(fill=tk.X, pady=2)
+            
+            ttk.Label(row, text=f"{label1}:", width=8).pack(side=tk.LEFT)
+            ttk.Entry(row, textvariable=var1, width=8).pack(side=tk.LEFT, padx=(0, 20))
+            
+            ttk.Label(row, text=f"{label2}:", width=8).pack(side=tk.LEFT)
+            ttk.Entry(row, textvariable=var2, width=8).pack(side=tk.LEFT)
+
+        # Využití tvých stávajících self.vars
+        create_geo_row(self.prop_frame, "X", self.vars['x'], "Width", self.vars['width'])
+        create_geo_row(self.prop_frame, "Y", self.vars['y'], "Height", self.vars['height'])
         
+        # Samostatný řádek pro Z-Index (pokud ho v self.vars máš, což bys měla mít)
+        z_row = ttk.Frame(self.prop_frame)
+        z_row.pack(fill=tk.X, pady=2)
+        ttk.Label(z_row, text="Z-Index:", width=8).pack(side=tk.LEFT)
+        ttk.Entry(z_row, textvariable=self.vars['z_index'], width=8).pack(side=tk.LEFT)
+        ttk.Checkbutton(z_row, text="Auto-size (Content)", variable=self.vars['auto_size']).pack(side=tk.LEFT, padx=10)
+
+        ttk.Button(self.prop_frame, text="Apply Geometry", command=self.manual_update).pack(fill=tk.X, pady=10)
+
+        ttk.Button(self.right_frame, text="🎨 Open Font & Style Editor", 
+                   command=self.open_style_editor).pack(fill=tk.X, pady=10)
 
     def load_bg_from_config(self):
         """Načte obrázek cesty uložené v JSONu."""
@@ -813,6 +847,8 @@ class WebSettingsWindow(tk.Toplevel):
             self.vars["y"].set(p["y"])
             self.vars["width"].set(p.get("width", 200)) # Default 200
             self.vars["height"].set(p.get("height", 100)) # Default 100
+            self.vars["z_index"].set(p.get("z_index", 0))
+            self.vars["auto_size"].set(p.get("auto_size", False))
             self.draw_panels()
 
     def change_z(self, delta):
@@ -830,6 +866,8 @@ class WebSettingsWindow(tk.Toplevel):
             p["y"] = self.vars["y"].get()
             p["width"] = self.vars["width"].get()
             p["height"] = self.vars["height"].get()
+            p["z_index"] = self.vars["z_index"].get()
+            p["auto_size"] = self.vars["auto_size"].get()
             self.draw_panels()
 
     def on_start_drag(self, event):
@@ -853,6 +891,9 @@ class WebSettingsWindow(tk.Toplevel):
             self.manual_update()
             self._drag_data["item"] = None
 
+    def open_style_editor(self):
+        StyleEditorWindow(self, self.layout_cfg, self.apply_to_obs)
+    
     def apply_to_obs(self):
         # Kontrola, zda bot vůbec běží přes main_client.engine
         # (předpokládáme, že engine má v sobě loop nebo běží v asyncio)
@@ -868,11 +909,17 @@ class WebSettingsWindow(tk.Toplevel):
             else:
                 messagebox.showwarning(
                     "Bot Not Running", 
-                    "Layout saved to file, but could not be sent to OBS. Start the bot to update the live overlay."
+                    "Layout could not be sent to OBS. Start the bot to update the live overlay."
                 )
         except Exception as e:
             # Zachytíme případné jiné chyby, aby aplikace nespadla
             self.logger.error(f"Silent error in apply_to_obs: {e}")
+
+        try:
+            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
+                json.dump(self.config_data, f, indent=4, ensure_ascii=False)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to save config.json: {e}")
 
     def apply_and_close(self):
         self.config_data["web_layout"] = self.layout_cfg
@@ -884,6 +931,144 @@ class WebSettingsWindow(tk.Toplevel):
         self.apply_to_obs() # Poslat do OBS před zavřením
         self.destroy()
         
+class StyleEditorWindow(tk.Toplevel):
+    def __init__(self, parent, layout_cfg, on_save_callback):
+        super().__init__(parent)
+        self.title("Font & Tag Style Editor")
+        
+        # Geometrii nenastavujeme fixně, necháme ji dýchat
+        self.transient(parent)
+        self.grab_set()
+        
+        self.layout_cfg = layout_cfg
+        self.on_save_callback = on_save_callback
+
+        # Kontejner
+        self.main_container = ttk.Frame(self)
+        self.main_container.pack(fill=tk.BOTH, expand=True)
+
+        # Spodní lišta s tlačítkem (vytvořena dřív, aby byla "přibitá" dolů)
+        self.bottom_bar = ttk.Frame(self)
+        self.bottom_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=10)
+
+
+        self.apply_and_close_btn = ttk.Button(self.bottom_bar, text="Apply & Close", command=self.apply_and_close)
+        self.apply_and_close_btn.pack(side=tk.RIGHT)
+        self.apply_btn = ttk.Button(self.bottom_bar, text="Apply", command=self.on_save_callback)
+        self.apply_btn.pack(side=tk.RIGHT)
+        ttk.Label(self.bottom_bar, text="💡 Změny se ukládají při opuštění pole.").pack(side=tk.LEFT)
+
+        # Scrollable Canvas
+        self.canvas_frame = ttk.Frame(self.main_container)
+        self.canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+
+        self.canvas = tk.Canvas(self.canvas_frame, highlightthickness=0)
+        self.scrollbar = ttk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
+        self.scroll_content = ttk.Frame(self.canvas)
+
+        self.scroll_content.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        )
+
+        self.canvas.create_window((0, 0), window=self.scroll_content, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.bind_all("<MouseWheel>", self._on_mousewheel)
+        self.headers = ["ID", "Font Family", "Size", "Color", "<b> Color", "<b> Size", "<i> Color", "<i> Size", "<u> Color", "<u> Size", "<s> Color", "<s> Size"]
+        self.setup_table()
+
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+
+    def setup_table(self):
+        # Vykreslení hlavičky
+        for col, text in enumerate(self.headers):
+            lbl = tk.Label(self.scroll_content, text=text, font=("Arial", 9, "bold"), 
+                          padx=10, pady=5, relief="flat", bg="#e1e1e1")
+            lbl.grid(row=0, column=col, sticky="nsew", padx=1, pady=1)
+
+        row_ids = ["global"] + list(self.layout_cfg.get("panels", {}).keys())
+
+        # Vykreslení řádků (stejná logika jako minule)
+        for r_idx, rid in enumerate(row_ids, start=1):
+            tk.Label(self.scroll_content, text=rid.upper(), padx=10, font=("Arial", 9, "bold")).grid(row=r_idx, column=0, sticky="w")
+            
+            mapping = [
+                ("font_family", "text"), ("font_size", "text"),
+                ("color", "color"), ("b_color", "color"), ("b_size", "text"),
+                ("i_color", "color"), ("i_size", "text"), ("u_color", "color"),
+                ("u_size", "text"), ("s_color", "color"), ("s_size", "text")
+            ]
+
+            for c_idx, (key, field_type) in enumerate(mapping, start=1):
+                val = self.get_val(rid, key)
+                if field_type == "text":
+                    ent = ttk.Entry(self.scroll_content, width=12)
+                    ent.insert(0, str(val))
+                    ent.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                    ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=ent: self.set_val(r, k, w.get()))
+                elif field_type == "color":
+                    cell = ttk.Frame(self.scroll_content)
+                    cell.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                    c_ent = ttk.Entry(cell, width=8)
+                    c_ent.insert(0, str(val))
+                    c_ent.pack(side=tk.LEFT)
+                    btn = tk.Button(cell, bg=val if str(val).startswith("#") else "white", 
+                                   width=2, height=1, relief="flat", command=lambda r=rid, k=key, e=c_ent: self.pick_color(r, k, e))
+                    btn.pack(side=tk.LEFT, padx=2)
+                    c_ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=c_ent, p=btn: self.update_from_entry(r, k, w, p))
+
+        # FINÁLNÍ KROK: Přizpůsobení okna
+        self.scroll_content.update_idletasks()
+        w = self.scroll_content.winfo_reqwidth() + 50
+        h = self.scroll_content.winfo_reqheight() + 100
+        # Omezíme maximální velikost na 90% obrazovky, aby okno nezmizelo
+        max_h = int(self.winfo_screenheight() * 0.8)
+        self.canvas.configure(width=w, height=min(h-100, max_h))
+
+    def get_val(self, rid, key):
+        if rid == "global": return self.layout_cfg.get("global_style", {}).get(key, "")
+        return self.layout_cfg.get("panels", {}).get(rid, {}).get(key, "")
+
+    def set_val(self, rid, key, val):
+        val = str(val).strip()
+
+        if rid == "global":
+            if "global_style" not in self.layout_cfg: 
+                self.layout_cfg["global_style"] = {}
+            self.layout_cfg["global_style"][key] = val
+        else:
+            if rid in self.layout_cfg.get("panels", {}):
+                # KLÍČOVÁ ZMĚNA:
+                if val == "":
+                    # Pokud je hodnota prázdná, smažeme klíč z panelu
+                    if key in self.layout_cfg["panels"][rid]:
+                        del self.layout_cfg["panels"][rid][key]
+                else:
+                    # Jinak hodnotu normálně uložíme
+                    self.layout_cfg["panels"][rid][key] = val
+
+    def pick_color(self, rid, key, entry_widget):
+        current = entry_widget.get()
+        color = colorchooser.askcolor(initialcolor=current if current.startswith("#") else "#ffffff")[1]
+        if color:
+            entry_widget.delete(0, tk.END)
+            entry_widget.insert(0, color)
+            self.set_val(rid, key, color)
+            for child in entry_widget.master.winfo_children():
+                if isinstance(child, tk.Button): child.configure(bg=color)
+
+    def update_from_entry(self, rid, key, entry_widget, preview_widget):
+        val = entry_widget.get()
+        self.set_val(rid, key, val)
+        if val.startswith("#") and len(val) == 7: preview_widget.configure(bg=val)
+    
+    def apply_and_close(self):
+        self.on_save_callback()
+        self.destroy()
 
 root = tkdnd.Tk()
 ConfigGUI(root)

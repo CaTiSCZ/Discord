@@ -19,6 +19,7 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from logger import setup_logger
 logger = setup_logger("WebServer", level=logging.DEBUG)
+js_logger = setup_logger("OBS_JS", level=logging.DEBUG)
 
 # 1. Inicializace Socket.io serveru
 # cors_allowed_origins="*" zajistí, že se OBS připojí bez ohledu na doménu
@@ -113,6 +114,17 @@ async def disconnect(sid):
     logger.info(f"Connection closed")
     logger.debug(f"Disconnected: {sid}")
     await dispatcher.update_connection_status(False)
+
+@sio.on("js_log")
+async def handle_js_log(sid, data):
+    # data bude objekt { "level": "info", "message": "text" }
+    level_str = data.get("level", "info").upper()
+    msg = data.get("message", "")
+    
+    level = getattr(logging, level_str, logging.error)
+    
+    js_logger.log(level, msg)
+
 
 # --- Spouštěcí funkce ---
 
