@@ -823,18 +823,42 @@ class WebSettingsWindow(tk.Toplevel):
         self.canvas.delete("panel")
         # Kreslíme od nejnižšího Z-indexu po nejvyšší
         panels = self.layout_cfg.get("panels", {})
+        global_style = self.layout_cfg.get("global_style", {})
         sorted_keys = sorted(panels.keys(), key=lambda k: panels[k].get("z_index", 0))
+        self.active_overlay_img = None # Resetujeme overlay pro aktivní panel
         
         for p_id in sorted_keys:
             p_info = panels[p_id]
             is_active = (p_id == self.active_panel_id)
+            is_auto = p_info.get("auto_size", False)
+            text_color = p_info.get("color", "#FFFFFF")
+            center_content = p_info.get("center_content", False) 
+            
             x, y = p_info["x"] * self.scale, p_info["y"] * self.scale
-            w = p_info.get("width", 200) * self.scale
-            h = p_info.get("height", 100) * self.scale
+            w = int(p_info.get("width", 350) * self.scale) 
+            h = int(p_info.get("height", 100) * self.scale) 
 
-            color = "#0078d7" if is_active else "#555555"
-            self.canvas.create_rectangle(x, y, x+w, y+h, fill=color, outline="white", width=2 if is_active else 1, tags=("panel", p_id), stipple="gray50" if not is_active else "")
-            self.canvas.create_text(x + 5, y + 5, text=p_id, anchor="nw", fill="white", tags=("panel", p_id))
+            outline_color = "white" if is_active else "#888888"
+            dash_style = (5, 2) if is_auto else None
+
+            if is_active:
+                overlay_auto = Image.new('RGBA', (max(1, w), max(1, h)), (0, 120, 215, 150))
+                overlay = Image.new('RGBA', (max(1, w), max(1, h)), (0, 120, 215, 230))
+                self.active_overlay_img = ImageTk.PhotoImage(overlay_auto) if is_auto else ImageTk.PhotoImage(overlay)
+                self.canvas.create_image(x, y, image=self.active_overlay_img, anchor="nw", tags=("panel", p_id))            
+        
+            self.canvas.create_rectangle(x, y, x+w, y+h, fill= "", outline=outline_color, width=2 if is_active else 1, tags=("panel", p_id), dash=dash_style)
+            if center_content:
+                text_anchor = "center"
+                text_x, text_y = x + w/2, y + h/2
+            else:
+                text_anchor = "nw"
+                text_x, text_y = x + 5, y + 5
+
+            if not text_color:
+                text_color =  global_style.get("color", "#FFFFFF") 
+            label_text = f"{p_id} [AUTO]" if is_auto else p_id
+            self.canvas.create_text(text_x, text_y, text=label_text, anchor=text_anchor, fill=text_color, tags=("panel", p_id))
         
         self.canvas.tag_lower("bg_img")
 
@@ -883,8 +907,9 @@ class WebSettingsWindow(tk.Toplevel):
             self._drag_data.update({"x": event.x, "y": event.y})
             # Update políček v reálném čase
             bbox = self.canvas.bbox(self._drag_data["item"])
-            self.val_x.set(int(bbox[0] / self.scale))
-            self.val_y.set(int(bbox[1] / self.scale))
+            if bbox:
+                self.vars["x"].set(int(bbox[0] / self.scale))
+                self.vars["y"].set(int(bbox[1] / self.scale))
 
     def on_stop_drag(self, event):
         if self._drag_data["item"]:
@@ -892,7 +917,7 @@ class WebSettingsWindow(tk.Toplevel):
             self._drag_data["item"] = None
 
     def open_style_editor(self):
-        StyleEditorWindow(self, self.layout_cfg, self.apply_to_obs)
+        StyleEditorWindow(self, self.layout_cfg, self.apply_to_obs, self.draw_panels)
     
     def apply_to_obs(self):
         # Kontrola, zda bot vůbec běží přes main_client.engine
@@ -932,7 +957,7 @@ class WebSettingsWindow(tk.Toplevel):
         self.destroy()
         
 class StyleEditorWindow(tk.Toplevel):
-    def __init__(self, parent, layout_cfg, on_save_callback):
+    def __init__(self, parent, layout_cfg, on_save_callback, on_update_callback):
         super().__init__(parent)
         self.title("Font & Tag Style Editor")
         
@@ -942,6 +967,7 @@ class StyleEditorWindow(tk.Toplevel):
         
         self.layout_cfg = layout_cfg
         self.on_save_callback = on_save_callback
+        self.on_update_callback = on_update_callback
 
         # Kontejner
         self.main_container = ttk.Frame(self)
@@ -954,7 +980,7 @@ class StyleEditorWindow(tk.Toplevel):
 
         self.apply_and_close_btn = ttk.Button(self.bottom_bar, text="Apply & Close", command=self.apply_and_close)
         self.apply_and_close_btn.pack(side=tk.RIGHT)
-        self.apply_btn = ttk.Button(self.bottom_bar, text="Apply", command=self.on_save_callback)
+        self.apply_btn = ttk.Button(self.bottom_bar, text="Apply", command=self.apply)
         self.apply_btn.pack(side=tk.RIGHT)
         ttk.Label(self.bottom_bar, text="💡 Změny se ukládají při opuštění pole.").pack(side=tk.LEFT)
 
@@ -977,7 +1003,7 @@ class StyleEditorWindow(tk.Toplevel):
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.headers = ["ID", "Font Family", "Size", "Color", "<b> Color", "<b> Size", "<i> Color", "<i> Size", "<u> Color", "<u> Size", "<s> Color", "<s> Size"]
+        self.headers = ["ID", "Font Family", "Size", "Center", "Color", "<b> Color", "<b> Size", "<i> Color", "<i> Size", "<u> Color", "<u> Size", "<s> Color", "<s> Size"]
         self.setup_table()
 
     def _on_mousewheel(self, event):
@@ -991,17 +1017,21 @@ class StyleEditorWindow(tk.Toplevel):
             lbl.grid(row=0, column=col, sticky="nsew", padx=1, pady=1)
 
         row_ids = ["global"] + list(self.layout_cfg.get("panels", {}).keys())
-
+        
         # Vykreslení řádků (stejná logika jako minule)
         for r_idx, rid in enumerate(row_ids, start=1):
             tk.Label(self.scroll_content, text=rid.upper(), padx=10, font=("Arial", 9, "bold")).grid(row=r_idx, column=0, sticky="w")
-            
+            is_auto = False
+            if rid != "global":
+                is_auto = self.layout_cfg.get("panels", {}).get(rid, {}).get("auto_size", False)
+
             mapping = [
-                ("font_family", "text"), ("font_size", "text"),
+                ("font_family", "text"), ("font_size", "text"), ("center_content", "bool"),
                 ("color", "color"), ("b_color", "color"), ("b_size", "text"),
                 ("i_color", "color"), ("i_size", "text"), ("u_color", "color"),
                 ("u_size", "text"), ("s_color", "color"), ("s_size", "text")
             ]
+            
 
             for c_idx, (key, field_type) in enumerate(mapping, start=1):
                 val = self.get_val(rid, key)
@@ -1010,6 +1040,19 @@ class StyleEditorWindow(tk.Toplevel):
                     ent.insert(0, str(val))
                     ent.grid(row=r_idx, column=c_idx, padx=3, pady=3)
                     ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=ent: self.set_val(r, k, w.get()))
+
+                elif field_type == "bool":
+                    # Checkbox pro centrování
+                    var = tk.BooleanVar(value=True if str(val).lower() == "true" else False)
+                    cb = ttk.Checkbutton(self.scroll_content, variable=var, 
+                                        command=lambda r=rid, k=key, v=var: self.set_val(r, k, v.get()))
+                    cb.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                    
+                    # Logika: Pokud je to auto-size panel, centrování zakážeme
+                    if is_auto or rid == "global":
+                        cb.state(['disabled'])
+                        self.set_val(rid, key, False) # Vynutit vypnutí v datech
+
                 elif field_type == "color":
                     cell = ttk.Frame(self.scroll_content)
                     cell.grid(row=r_idx, column=c_idx, padx=3, pady=3)
@@ -1034,22 +1077,24 @@ class StyleEditorWindow(tk.Toplevel):
         return self.layout_cfg.get("panels", {}).get(rid, {}).get(key, "")
 
     def set_val(self, rid, key, val):
-        val = str(val).strip()
+        if isinstance(val, bool):
+            clean_val = val
+        else:
+            clean_val = str(val).strip()
 
         if rid == "global":
             if "global_style" not in self.layout_cfg: 
                 self.layout_cfg["global_style"] = {}
-            self.layout_cfg["global_style"][key] = val
+            self.layout_cfg["global_style"][key] = clean_val
         else:
             if rid in self.layout_cfg.get("panels", {}):
-                # KLÍČOVÁ ZMĚNA:
                 if val == "":
                     # Pokud je hodnota prázdná, smažeme klíč z panelu
                     if key in self.layout_cfg["panels"][rid]:
                         del self.layout_cfg["panels"][rid][key]
                 else:
                     # Jinak hodnotu normálně uložíme
-                    self.layout_cfg["panels"][rid][key] = val
+                    self.layout_cfg["panels"][rid][key] = clean_val
 
     def pick_color(self, rid, key, entry_widget):
         current = entry_widget.get()
@@ -1065,9 +1110,14 @@ class StyleEditorWindow(tk.Toplevel):
         val = entry_widget.get()
         self.set_val(rid, key, val)
         if val.startswith("#") and len(val) == 7: preview_widget.configure(bg=val)
+
+    def apply(self):
+        self.on_save_callback()
+        self.on_update_callback()    
     
     def apply_and_close(self):
         self.on_save_callback()
+        self.on_update_callback()
         self.destroy()
 
 root = tkdnd.Tk()

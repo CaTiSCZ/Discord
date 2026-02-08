@@ -99,11 +99,14 @@ socket.on("init_layout", (config) => {
     console.log("Loading layout from server:", config);
     if (!config || !config.panels) return;
     const globalStyle = config.global_style || {};
+ 
 
     for (const [id, settings] of Object.entries(config.panels)) {
         const el = document.getElementById(id);
         const content = document.getElementById(id + "-content");
         if (!el || !content) continue;
+        const style = settings.style || {};
+        const isAuto = settings.auto_size === true;
 
         // Geometrie
         el.style.left = settings.x + "px";
@@ -123,6 +126,20 @@ socket.on("init_layout", (config) => {
             el.style.maxWidth = "none";
             el.style.maxHeight = "none";
             el.style.display = "block";
+        }
+
+        
+        if (settings.center_content) {
+            content.style.display = "flex";
+            content.style.flexDirection = "column";
+            content.style.justifyContent = "center";
+            content.style.alignItems = "center";
+            content.style.textAlign = "center"; // Pro případ více řádků
+        } else {
+            content.style.display = isAuto ? "block" : "inline-block";
+            content.style.justifyContent = "unset";
+            content.style.alignItems = "unset";
+            content.style.textAlign = "left";
         }
 
         // Základní text (priorita: panel -> globální -> CSS default)
