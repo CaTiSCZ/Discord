@@ -685,9 +685,12 @@ class WebSettingsWindow(tk.Toplevel):
         self.canvas_h = int(self.layout_cfg["canvas"]["height"] * self.scale)
         
         self.active_panel_id = None
+        self.selected_pannels = None
         self._drag_data = {"x": 0, "y": 0, "item": None}
         self.bg_image_tk = None # Reference pro GC
 
+        self.manual_select = True
+        
         self.setup_ui()
         self.load_bg_from_config() # Automatické načtení
         self.refresh_layer_table()
@@ -804,7 +807,7 @@ class WebSettingsWindow(tk.Toplevel):
             self.load_bg_from_config()
 
     def refresh_layer_table(self):
-        selected_id = self.active_panel_id
+
         for i in self.tree.get_children(): self.tree.delete(i)
         
         panels = self.layout_cfg.get("panels", {})
@@ -816,8 +819,18 @@ class WebSettingsWindow(tk.Toplevel):
         new_hight = min(max(2, len(panels)), 12)
         self.tree.configure(height=new_hight)
         self.right_frame.update_idletasks()
-        if selected_id and self.tree.exists(selected_id):
-            self.tree.selection_set(selected_id)
+        self.manual_select = False
+        
+        if self.active_panel_id and self.tree.exists(self.active_panel_id):
+            self.tree.selection_set(self.active_panel_id)
+        if self.selected_pannels:
+            for p_id in self.selected_pannels:
+                if self.tree.exists(p_id):
+                    self.tree.selection_add(p_id)
+        self.tree.update()
+        self.manual_select = True
+        
+        
 
     def draw_panels(self):
         self.canvas.delete("panel")
@@ -826,6 +839,10 @@ class WebSettingsWindow(tk.Toplevel):
         global_style = self.layout_cfg.get("global_style", {})
         sorted_keys = sorted(panels.keys(), key=lambda k: panels[k].get("z_index", 0))
         self.active_overlay_img = None # Resetujeme overlay pro aktivní panel
+
+        if self.active_panel_id and self.active_panel_id in sorted_keys:
+            sorted_keys.remove(self.active_panel_id)
+            sorted_keys.append(self.active_panel_id)
         
         for p_id in sorted_keys:
             p_info = panels[p_id]
@@ -855,6 +872,9 @@ class WebSettingsWindow(tk.Toplevel):
                 text_anchor = "nw"
                 text_x, text_y = x + 5, y + 5
 
+            text_offset = p_info.get("z_index", 0)
+            text_x += (text_offset-1) * 20 if text_offset > 1 else 0
+
             if not text_color:
                 text_color =  global_style.get("color", "#FFFFFF") 
             label_text = f"{p_id} [AUTO]" if is_auto else p_id
@@ -863,9 +883,25 @@ class WebSettingsWindow(tk.Toplevel):
         self.canvas.tag_lower("bg_img")
 
     def on_layer_selected(self, event):
+        if not self.manual_select:
+            return
         selected = self.tree.selection()
-        if selected:
+        self.z_axes = [] # Resetujeme z-axes pro více výběrů
+        if len(selected) == 1 and selected[0] == self.active_panel_id:
+            self.tree.selection_remove(selected[0])
+            self.active_panel_id = None
+        elif len(selected) > 1 and self.selected_pannels and set(selected) == set(self.selected_pannels):
+            for p_id in selected:
+                self.tree.selection_remove(p_id)
+            self.selected_pannels = None
+        elif len(selected) > 1:
+            self.active_panel_id = None
+            self.selected_pannels = selected
+            for p_id in selected:
+                self.z_axes.append(self.layout_cfg["panels"][p_id].get("z_index", 0))
+        elif selected:
             self.active_panel_id = selected[0]
+            self.selected_pannels = None
             p = self.layout_cfg["panels"][self.active_panel_id]
             self.vars["x"].set(p["x"])
             self.vars["y"].set(p["y"])
@@ -873,13 +909,21 @@ class WebSettingsWindow(tk.Toplevel):
             self.vars["height"].set(p.get("height", 100)) # Default 100
             self.vars["z_index"].set(p.get("z_index", 0))
             self.vars["auto_size"].set(p.get("auto_size", False))
-            self.draw_panels()
+        self.draw_panels()
+        
+    
 
     def change_z(self, delta):
-        if self.active_panel_id:
+        if self.active_panel_id and not self.selected_pannels:
             p = self.layout_cfg["panels"][self.active_panel_id]
             # Změníme hodnotu přímo v slovníku layout_cfg
             p["z_index"] = p.get("z_index", 0) + delta
+            self.refresh_layer_table()
+            self.draw_panels()
+        elif self.selected_pannels:
+            for p_id in self.selected_pannels:
+                p = self.layout_cfg["panels"][p_id]
+                p["z_index"] = p.get("z_index", 0) + delta
             self.refresh_layer_table()
             self.draw_panels()
 
