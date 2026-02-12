@@ -728,16 +728,18 @@ class WebSettingsWindow(tk.Toplevel):
         self.paned.add(self.right_frame, weight=1)
 
         # Tabulka vrstev
-        ttk.Label(self.right_frame, text="Panels (Select to Move):").pack(anchor="w")
+        ttk.Label(self.right_frame, text="Panels:").pack(anchor="w")
         tree_container = ttk.Frame(self.right_frame)
         tree_container.pack(fill=tk.X, pady=5)
         num_panels = len(self.layout_cfg.get("panels", {}))
         tree_height = min(max(2, num_panels), 10)
-        self.tree = ttk.Treeview(tree_container, columns=("name", "z"), show="headings", height=tree_height)
+        self.tree = ttk.Treeview(tree_container, columns=("name", "z", "type"), show="headings", height=tree_height)
         self.tree.heading("name", text="Panel Name")
         self.tree.heading("z", text="Z")
-        self.tree.column("name", width=80)
-        self.tree.column("z", width=40, anchor="center")
+        self.tree.heading("type", text="Type")
+        self.tree.column("name", width=40, anchor="center")
+        self.tree.column("z", width=20, anchor="center")
+        self.tree.column("type", width=40, anchor="center")
         self.tree.pack(fill=tk.X, expand=False, pady=5)
 
         scrollbar = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.tree.yview)
@@ -745,6 +747,7 @@ class WebSettingsWindow(tk.Toplevel):
         self.tree.pack(side=tk.LEFT, fill=tk.X, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.bind("<<TreeviewSelect>>", self.on_layer_selected)
+        self.tree.bind("<Double-1>", self.toggle_panel_type)
 
         z_frame = ttk.Frame(self.right_frame)
         z_frame.pack(fill=tk.X, pady=5)
@@ -784,7 +787,7 @@ class WebSettingsWindow(tk.Toplevel):
 
         ttk.Button(self.prop_frame, text="Apply Geometry", command=self.manual_update).pack(fill=tk.X, pady=10)
 
-        ttk.Button(self.right_frame, text="🎨 Open Font & Style Editor", 
+        ttk.Button(self.right_frame, text="Open Font & Style Editor", 
                    command=self.open_style_editor).pack(fill=tk.X, pady=10)
 
     def load_bg_from_config(self):
@@ -815,12 +818,14 @@ class WebSettingsWindow(tk.Toplevel):
         sorted_panels = sorted(panels.items(), key=lambda x: x[1].get("z_index", 0), reverse=True)
         
         for p_id, info in sorted_panels:
-            self.tree.insert("", tk.END, iid=p_id, values=(p_id, info.get("z_index", 0)))
+            panel_type = "Image" if info.get("is_image", False) else "Text"
+            self.tree.insert("", tk.END, iid=p_id, values=(p_id, info.get("z_index", 0), panel_type))
+            
         new_hight = min(max(2, len(panels)), 12)
         self.tree.configure(height=new_hight)
         self.right_frame.update_idletasks()
-        self.manual_select = False
         
+        self.manual_select = False
         if self.active_panel_id and self.tree.exists(self.active_panel_id):
             self.tree.selection_set(self.active_panel_id)
         if self.selected_pannels:
@@ -849,19 +854,21 @@ class WebSettingsWindow(tk.Toplevel):
             is_active = (p_id == self.active_panel_id)
             is_auto = p_info.get("auto_size", False)
             text_color = p_info.get("color", "#FFFFFF")
-            center_content = p_info.get("center_content", False) 
+            center_content = p_info.get("center_content", False)
+            is_image_panel = p_info.get("is_image", False)
             
             x, y = p_info["x"] * self.scale, p_info["y"] * self.scale
             w = int(p_info.get("width", 350) * self.scale) 
             h = int(p_info.get("height", 100) * self.scale) 
 
-            outline_color = "white" if is_active else "#888888"
+            outline_color = "white" if is_active else ("#7AD896" if is_image_panel else "#A8A8A8")
             dash_style = (5, 2) if is_auto else None
 
             if is_active:
                 overlay_auto = Image.new('RGBA', (max(1, w), max(1, h)), (0, 120, 215, 150))
                 overlay = Image.new('RGBA', (max(1, w), max(1, h)), (0, 120, 215, 230))
-                self.active_overlay_img = ImageTk.PhotoImage(overlay_auto) if is_auto else ImageTk.PhotoImage(overlay)
+                overlay_image_panel = Image.new('RGBA', (max(1, w), max(1, h)), (83, 136, 99, 230))
+                self.active_overlay_img = ImageTk.PhotoImage(overlay_auto) if is_auto else ImageTk.PhotoImage(overlay_image_panel if is_image_panel else overlay)
                 self.canvas.create_image(x, y, image=self.active_overlay_img, anchor="nw", tags=("panel", p_id))            
         
             self.canvas.create_rectangle(x, y, x+w, y+h, fill= "", outline=outline_color, width=2 if is_active else 1, tags=("panel", p_id), dash=dash_style)
@@ -877,7 +884,7 @@ class WebSettingsWindow(tk.Toplevel):
 
             if not text_color:
                 text_color =  global_style.get("color", "#FFFFFF") 
-            label_text = f"{p_id} [AUTO]" if is_auto else p_id
+            label_text = f"{p_id} [AUTO]" if is_auto else (f"{p_id} [IMAGE]" if is_image_panel else p_id)
             self.canvas.create_text(text_x, text_y, text=label_text, anchor=text_anchor, fill=text_color, tags=("panel", p_id))
         
         self.canvas.tag_lower("bg_img")
@@ -936,6 +943,20 @@ class WebSettingsWindow(tk.Toplevel):
             p["height"] = self.vars["height"].get()
             p["z_index"] = self.vars["z_index"].get()
             p["auto_size"] = self.vars["auto_size"].get()
+            self.draw_panels()
+
+    def toggle_panel_type(self, event):
+        selected = self.tree.selection()
+        if selected:
+            p_id = selected[0]
+            p_info = self.layout_cfg["panels"][p_id]
+            if p_info.get("is_image", False):
+                p_info["is_image"] = False
+                p_info.pop("img_fit", None)
+            else:
+                p_info["is_image"] = True
+                p_info["img_fit"] = "cover"
+            self.refresh_layer_table()
             self.draw_panels()
 
     def on_start_drag(self, event):
@@ -1047,66 +1068,111 @@ class StyleEditorWindow(tk.Toplevel):
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
         self.bind_all("<MouseWheel>", self._on_mousewheel)
-        self.headers = ["ID", "Font Family", "Size", "Center", "Color", "<b> Color", "<b> Size", "<i> Color", "<i> Size", "<u> Color", "<u> Size", "<s> Color", "<s> Size"]
         self.setup_table()
 
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def setup_table(self):
-        # Vykreslení hlavičky
-        for col, text in enumerate(self.headers):
-            lbl = tk.Label(self.scroll_content, text=text, font=("Arial", 9, "bold"), 
-                          padx=10, pady=5, relief="flat", bg="#e1e1e1")
-            lbl.grid(row=0, column=col, sticky="nsew", padx=1, pady=1)
-
-        row_ids = ["global"] + list(self.layout_cfg.get("panels", {}).keys())
-        
-        # Vykreslení řádků (stejná logika jako minule)
-        for r_idx, rid in enumerate(row_ids, start=1):
-            tk.Label(self.scroll_content, text=rid.upper(), padx=10, font=("Arial", 9, "bold")).grid(row=r_idx, column=0, sticky="w")
-            is_auto = False
-            if rid != "global":
-                is_auto = self.layout_cfg.get("panels", {}).get(rid, {}).get("auto_size", False)
-
-            mapping = [
-                ("font_family", "text"), ("font_size", "text"), ("center_content", "bool"),
-                ("color", "color"), ("b_color", "color"), ("b_size", "text"),
-                ("i_color", "color"), ("i_size", "text"), ("u_color", "color"),
-                ("u_size", "text"), ("s_color", "color"), ("s_size", "text")
+        panels = self.layout_cfg.get("panels", {})
+        text_panels = ["global"] + [pid for pid, info in panels.items() if not info.get("is_image", False)]
+        image_panels = [pid for pid, info in panels.items() if info.get("is_image", False)]
+        headers_text = ["ID", "Font Family", "Size", "Center", "Bg color", "Text Color", "<b> Color", "<b> Size", "<i> Color", "<i> Size", "<u> Color", "<u> Size", "<s> Color", "<s> Size"]
+        headers_image = ["ID", "Bg color","Center", "Img Fit", "Opacity"]
+        mapping_text = [
+                ("font_family", "text"), ("font_size", "text"), 
+                ("center_content", "bool"),
+                ("bg_color", "bg_color"),
+                ("text_color", "color"),
+                ("b_color", "color"), ("b_size", "text"),
+                ("i_color", "color"), ("i_size", "text"), 
+                ("u_color", "color"), ("u_size", "text"), 
+                ("s_color", "color"), ("s_size", "text")
             ]
-            
+        mapping_image = [
+                ("bg_color", "bg_color"), ("center_content", "bool"), ("img_fit", "combo_fit"), ("img_opacity", "text"),
+            ]
 
-            for c_idx, (key, field_type) in enumerate(mapping, start=1):
-                val = self.get_val(rid, key)
-                if field_type == "text":
-                    ent = ttk.Entry(self.scroll_content, width=12)
-                    ent.insert(0, str(val))
-                    ent.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                    ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=ent: self.set_val(r, k, w.get()))
+        #row_ids = ["global"] + list(self.layout_cfg.get("panels", {}).keys())
 
-                elif field_type == "bool":
-                    # Checkbox pro centrování
-                    var = tk.BooleanVar(value=True if str(val).lower() == "true" else False)
-                    cb = ttk.Checkbutton(self.scroll_content, variable=var, 
-                                        command=lambda r=rid, k=key, v=var: self.set_val(r, k, v.get()))
-                    cb.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                    
-                    # Logika: Pokud je to auto-size panel, centrování zakážeme
-                    if is_auto or rid == "global":
-                        cb.state(['disabled'])
-                        self.set_val(rid, key, False) # Vynutit vypnutí v datech
+        def draw_section(parent, title, row_ids, mapping, headers):
+            frame = ttk.LabelFrame(parent, text=title, padding=10)
+            frame.pack(fill=tk.X, pady=(10,0), padx=5)
 
-                elif field_type == "color":
-                    cell = ttk.Frame(self.scroll_content)
-                    cell.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                    c_ent = ttk.Entry(cell, width=8)
-                    c_ent.insert(0, str(val))
-                    c_ent.pack(side=tk.LEFT)
-                    btn = tk.Button(cell, bg=val if str(val).startswith("#") else "white", 
-                                   width=2, height=1, relief="flat", command=lambda r=rid, k=key, e=c_ent: self.pick_color(r, k, e))
-                    btn.pack(side=tk.LEFT, padx=2)
-                    c_ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=c_ent, p=btn: self.update_from_entry(r, k, w, p))
+            for col, text in enumerate(headers):
+                lbl = tk.Label(frame, text=text, font=("Arial", 9, "bold"), 
+                            padx=10, pady=5, relief="flat", bg="#e1e1e1")
+                lbl.grid(row=0, column=col, sticky="nsew", padx=1, pady=1)
+
+            for r_idx, rid in enumerate(row_ids, start=1):
+                tk.Label(frame, text=rid.upper(), padx=10, font=("Arial", 9, "bold")).grid(row=r_idx, column=0, sticky="w")
+                is_auto = False
+                if rid != "global":
+                    is_auto = self.layout_cfg.get("panels", {}).get(rid, {}).get("auto_size", False)
+
+                for c_idx, (key, field_type) in enumerate(mapping, start=1):
+                    val = self.get_val(rid, key)
+                    if field_type == "text":
+                        ent = ttk.Entry(frame, width=12)
+                        ent.insert(0, str(val))
+                        ent.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                        ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=ent: self.set_val(r, k, w.get()))
+
+                    elif field_type == "bool":
+                        # Checkbox pro centrování
+                        var = tk.BooleanVar(value=True if str(val).lower() == "true" else False)
+                        cb = ttk.Checkbutton(frame, variable=var, 
+                                            command=lambda r=rid, k=key, v=var: self.set_val(r, k, v.get()))
+                        cb.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                        
+                        # Logika: Pokud je to auto-size panel, centrování zakážeme
+                        if is_auto or rid == "global":
+                            cb.state(['disabled'])
+                            self.set_val(rid, key, False) # Vynutit vypnutí v datech
+
+                    elif field_type == "combo_fit":
+                        
+                        #var = tk.StringVar(str(value=val) if val else "")
+                        combo = ttk.Combobox(frame, values=["", "cover", "contain", "fill"], width=8, state="readonly")
+                        combo.set(str(val) if str(val) else "")
+                        combo.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                        combo.bind("<<ComboboxSelected>>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get()))
+                        if rid == "global":
+                            combo.state(['disabled'])
+                            self.set_val(rid, key, "") # Vynutit "" pro global
+
+                    elif field_type in ["color", "bg_color"]:
+                        cell = ttk.Frame(frame)
+                        cell.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                        c_ent = ttk.Entry(cell, width=8)
+                        c_ent.insert(0, str(val))
+                        c_ent.grid(row=0, column=0)
+                        btn = tk.Button(cell, bg=val if str(val).startswith("#") else "white", 
+                                    width=2, height=1, relief="flat", command=lambda r=rid, k=key, e=c_ent: self.pick_color(r, k, e))
+                        btn.grid(row=0, column=1, padx=2)
+                        if field_type == "bg_color":
+                            op_key = key + "_opacity"
+                            op_val = self.get_val(rid, op_key)
+
+                            try:
+                                op_val = float(op_val) if op_val not in [None, ""] else 1.0
+                            except:
+                                op_val = 1.0
+                            row_var = tk.DoubleVar(value=op_val)
+
+                            scale = tk.Scale(cell, from_=0, to=1, resolution=0.1, orient=tk.HORIZONTAL,
+                                            showvalue=True, length=60, font=("Arial", 7),
+                                            highlightthickness=0, troughcolor="#cccccc", sliderrelief="flat",
+                                            variable=row_var,
+                                            command=lambda v, r=rid, k=op_key: self.set_val(r, k, v))
+                            scale.set(op_val)
+                            scale.grid(row=1, column=0, columnspan=2, sticky="we")
+                        c_ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=c_ent, p=btn: self.update_from_entry(r, k, w, p))
+                    #pass
+        if text_panels:
+            draw_section(self.scroll_content, "Text Panels", text_panels, mapping_text, headers_text)
+        if image_panels:
+            draw_section(self.scroll_content, "Image Panels", image_panels, mapping_image, headers_image)
 
         # FINÁLNÍ KROK: Přizpůsobení okna
         self.scroll_content.update_idletasks()
@@ -1132,7 +1198,13 @@ class StyleEditorWindow(tk.Toplevel):
             self.layout_cfg["global_style"][key] = clean_val
         else:
             if rid in self.layout_cfg.get("panels", {}):
-                if val == "":
+                if key.endswith("_opacity"):
+                    color_key = "bg_color" 
+                    if color_key in self.layout_cfg["panels"][rid] and clean_val != "":
+                        self.layout_cfg["panels"][rid][key] = clean_val
+                    elif key in self.layout_cfg["panels"][rid]:
+                        del self.layout_cfg["panels"][rid][key]
+                if val == "" or val is None or (isinstance(val, bool) and val is False):
                     # Pokud je hodnota prázdná, smažeme klíč z panelu
                     if key in self.layout_cfg["panels"][rid]:
                         del self.layout_cfg["panels"][rid][key]

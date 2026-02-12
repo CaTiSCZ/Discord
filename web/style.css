@@ -14,9 +14,10 @@ html, body {
 .panel {
   position: absolute;
   box-sizing: border-box;
-  border: 2px solid rgba(255, 255, 255, 0.0);
-  padding: 10px;
+  border: 0px solid rgba(255, 255, 255, 0.0);
+  padding: 0px;
   overflow: hidden;
+  background-color: transparent
 }
 
 /* ===== POZICE PANELŮ ===== */
@@ -73,7 +74,7 @@ html, body {
   left: 2px;
   width: 2556px;
   height: 1434px;
-  background-color: rgba(0, 0, 0, 0);
+  background-color: transparent;
   z-index: 0;
 }
 /* Nadpis */
@@ -89,7 +90,7 @@ html, body {
     line-height: 1.2;           /* Výška řádku pro lepší čitelnost */
     font-size: 31px;
     text-shadow: 1px 1px 2px black; /* Přidá stín pro lepší čitelnost na různých pozadích */
-    background-color: rgba(0, 0, 0, 0.98); /* Pozadí může být černé pro kontrast */
+    /*background-color: rgba(0, 0, 0, 0.98);  Pozadí může být černé pro kontrast */
     color: #ffffff;              /* Výchozí barva textu bílá */  
 }
 
@@ -146,7 +147,13 @@ html, body {
   line-height: 1.2;           /* Výška řádku pro lepší čitelnost */
   font-size: 40px;
   text-shadow: 1px 1px 10px black;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: transparent;
   color: #e2e2e2;
 
+}
+.content-lable:empty {
+  background-color: transparent !important;
+}
+.content-area:empty {
+  background-color: transparent !important;
 }

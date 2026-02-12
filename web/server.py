@@ -27,6 +27,7 @@ sio = socketio.AsyncServer(async_mode='asgi', cors_allowed_origins='*')
 
 # 2. Vytvoření FastAPI aplikace
 app = FastAPI()
+app.mount("/web", StaticFiles(directory="web"), name="web")
 
 # 3. Propojení FastAPI a Socket.io do jedné ASGI aplikace
 combined_app = socketio.ASGIApp(sio, app)
