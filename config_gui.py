@@ -971,6 +971,7 @@ class WebSettingsWindow(tk.Toplevel):
             p["z_index"] = self.vars["z_index"].get()
             p["auto_size"] = self.vars["auto_size"].get()
             self.draw_panels()
+            self.refresh_layer_table()
 
     def toggle_panel_type(self, event):
         selected = self.tree.selection()
