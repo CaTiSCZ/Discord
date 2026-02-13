@@ -1028,7 +1028,6 @@ class StyleEditorWindow(tk.Toplevel):
         
         # Geometrii nenastavujeme fixně, necháme ji dýchat
         self.transient(parent)
-        self.grab_set()
         
         self.layout_cfg = layout_cfg
         self.on_save_callback = on_save_callback
