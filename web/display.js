@@ -143,6 +143,7 @@ function applyPanelStyle(id, settings) {
     // Geometrie
     el.style.left = settings.x + "px";
     el.style.top = settings.y + "px";
+    el.style.zIndex = settings.z_index !== undefined ? settings.z_index : 1;
     if (settings.auto_size) {
         // Režim maximální velikosti (přizpůsobí se obsahu)
         el.style.width = "auto";
@@ -172,7 +173,7 @@ function applyPanelStyle(id, settings) {
         img.style.objectFit = settings.img_fit || "contain";
         img.style.width = "100%";
         img.style.height = "100%";
-        img.style.objectPosition = settings.center_content ? "center" : "top left";
+        img.style.objectPosition = settings.center_content ? "center" : "left top";
         
         if (settings.img_opacity !== undefined && settings.img_opacity !== "") {
             img.style.opacity = settings.img_opacity;
