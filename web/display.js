@@ -41,14 +41,14 @@ window.onerror = function(message, source, lineno, colno, error) {
 const socket = io(); 
 
 socket.on("connect", () => {
-  console.log("Socket.io connected");
+    console.log("Socket.io connected");
 });
 
 
 // Zpracování nové zprávy (odpovídá tvému ws.onmessage)
 socket.on("new_message", (data) => {
-  const panelId = data.panel + "-content";
-  const el = document.getElementById(panelId);
+    const panelId = data.panel + "-content";
+    const el = document.getElementById(panelId);
     // Formatter posílá pole řádků (data.lines), spojíme je do textu
     if (el) {
         const lines = Array.isArray(data.lines) ? data.lines : [];
@@ -58,32 +58,32 @@ socket.on("new_message", (data) => {
         }
     } else {
         console.warn("Element with ID " + panelId + " not found.");
-  }
+    }
 });
 socket.on("new_image", (data) => {
-  // Předpokládáme, že v data.panel posíláš "panel-a" nebo "panel-b"
-  // Pokud tam posíláš čísla, stačí v configu nastavit ID panelu správně
-  const panelId = data.panel + "-content";
-  const imgElement = document.getElementById(panelId);
-  if (!imgElement) return console.warn("Element with ID " + panelId + " not found.");
-    if (data.url && data.url.trim() !== "") {
-        imgElement.src = data.url;
-        imgElement.onload = () => {
-            imgElement.classList.add("visible");
-            if (globalConfig.panels && globalConfig.panels[data.panel]) {
-                applyBackground(data.panel, globalConfig.panels[data.panel]);
-            } 
-        };
-        imgElement.onerror = () => {
+    const panelId = data.panel + "-content";
+    const imgElement = document.getElementById(panelId);
+    if (!imgElement) return console.warn("Element with ID " + panelId + " not found.");
+    imgElement.onload = () => {
+                imgElement.classList.add("visible");
+                if (globalConfig.panels && globalConfig.panels[data.panel]) {
+                    applyBackground(data.panel, globalConfig.panels[data.panel]);
+                } 
+            };
+    imgElement.onerror = () => {
             console.warn("Image failed to load:", data.url);
             if (globalConfig.panels && globalConfig.panels[data.panel]) {
                 applyBackground(data.panel, globalConfig.panels[data.panel]);
             } 
-        };
+        };   
+        
+        
+    if (data.url && data.url.trim() !== "") {
+        imgElement.src = data.url;
     } else {
-        // Schování obrázku
         imgElement.classList.remove("visible");
-        // Vymazat src až po doznění animace (0.3s v CSS)
+        imgElement.onload = null;
+        imgElement.onerror = null;
         setTimeout(() => { 
             if (!imgElement.classList.contains("visible")) {
                 imgElement.src = ""; 
