@@ -1,6 +1,6 @@
 #config_gui.py
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog, colorchooser
+from tkinter import ttk, messagebox, filedialog, colorchooser, font
 import json
 import os
 import sys
@@ -1064,6 +1064,7 @@ class StyleEditorWindow(tk.Toplevel):
         self.layout_cfg = layout_cfg
         self.on_save_callback = on_save_callback
         self.on_update_callback = on_update_callback
+        self.cached_fonts, self.max_font_width = self.get_system_fonts()
 
         # Kontejner
         self.main_container = ttk.Frame(self)
@@ -1111,7 +1112,7 @@ class StyleEditorWindow(tk.Toplevel):
         headers_text = ["ID", "Font Family", "Size", "Center", "Bg color", "Text Color", "<b> Color", "<b> Size", "<i> Color", "<i> Size", "<u> Color", "<u> Size", "<s> Color", "<s> Size"]
         headers_image = ["ID", "Bg color","Center", "Img Fit", "Opacity"]
         mapping_text = [
-                ("font_family", "text"), ("font_size", "text"), 
+                ("font_family", "font_combo"), ("font_size", "text"), 
                 ("center_content", "bool"),
                 ("bg_color", "bg_color"),
                 ("text_color", "color"),
@@ -1144,9 +1145,9 @@ class StyleEditorWindow(tk.Toplevel):
                 for c_idx, (key, field_type) in enumerate(mapping, start=1):
                     val = self.get_val(rid, key)
                     if field_type == "text":
-                        ent = ttk.Entry(frame, width=12)
+                        ent = ttk.Entry(frame, width=8)
                         ent.insert(0, str(val))
-                        ent.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                        ent.grid(row=r_idx, column=c_idx, padx=3, pady=3, )
                         ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=ent: self.set_val(r, k, w.get()))
 
                     elif field_type == "bool":
@@ -1162,7 +1163,6 @@ class StyleEditorWindow(tk.Toplevel):
                             self.set_val(rid, key, False) # Vynutit vypnutí v datech
 
                     elif field_type == "combo_fit":
-                        
                         #var = tk.StringVar(str(value=val) if val else "")
                         combo = ttk.Combobox(frame, values=["", "cover", "contain", "fill"], width=8, state="readonly")
                         combo.set(str(val) if str(val) else "")
@@ -1171,6 +1171,19 @@ class StyleEditorWindow(tk.Toplevel):
                         if rid == "global":
                             combo.state(['disabled'])
                             self.set_val(rid, key, "") # Vynutit "" pro global
+
+                    elif field_type == "font_combo":
+                        fonts = self.cached_fonts
+                        s = ttk.Style()
+                        s.configure("Wide.TCombobox", postoffset=(0, 0, self.max_font_width, 0))
+                        combo = ttk.Combobox(frame, values=fonts, width=15, style="Wide.TCombobox", state="readonly")
+                        current_val = str(val)
+                        found_match = [f for f in fonts if f.startswith(current_val)]
+                        combo.set(found_match[0] if found_match else current_val)
+                        combo.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                        combo.bind("<<ComboboxSelected>>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get().split(" [")[0]))
+                        combo.bind("<FocusOut>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get().split(" [")[0]))
+                    
 
                     elif field_type in ["color", "bg_color"]:
                         cell = ttk.Frame(frame)
@@ -1257,6 +1270,26 @@ class StyleEditorWindow(tk.Toplevel):
         val = entry_widget.get()
         self.set_val(rid, key, val)
         if val.startswith("#") and len(val) == 7: preview_widget.configure(bg=val)
+
+    def get_system_fonts(self):
+        """Vrátí seznam fontů s označením, zda jsou neproporcionální."""
+        all_fonts = sorted(list(set(font.families())))
+        font_list = [""]
+        max_width = 0
+        measure_font = font.Font(size=5)
+        
+        for f in all_fonts:
+            if f.startswith("@"): continue # Přeskočíme vertikální asijské fonty
+            
+            test_font = font.Font(family=f, size=10)
+            is_mono = test_font.measure("i") == test_font.measure("M")
+            
+            suffix = " [Mono]" if is_mono else ""
+            full_name = f"{f}{suffix}"
+            font_list.append(full_name)
+            max_width = max(max_width, measure_font.measure(full_name))
+            
+        return font_list, max_width
 
     def apply(self):
         self.on_save_callback()
