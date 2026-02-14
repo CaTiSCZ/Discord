@@ -66,6 +66,7 @@ class DiscordEngine:
             raise RuntimeError("TOKEN not defined in config.json (use config_gui.py to set it).")
         
         self.is_running = True
+        dispatcher.loop = self.loop
         try:
             self.client = discord.Client(intents=discord.Intents.all())
             logger.debug("Discord Client initialized.")
@@ -77,6 +78,7 @@ class DiscordEngine:
         async def on_ready():
             logger.debug(f"Bot is logged in as {self.client.user}")
             # Teprve teď, když je bot READY, spustíme watchery
+
             await self._start_watchers()
             logger.debug("Watchers started after bot login.")
         @self.client.event

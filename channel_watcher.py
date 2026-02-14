@@ -120,7 +120,7 @@ class MessageFormatter:
     def _normalize_line(self, text: str) -> str:
         """Odstraní markdowny a převede některé značky na HTML."""
         text = text.strip()
-        text = text.replace("__", "").replace("`", "")
+        text = text.replace("`", "")
         text = text.replace("kh1", "(adv)").replace("kl1", "(dis)")
         for prefix in ("**result**:", "**total**:"):
             if text.lower().startswith(prefix):
@@ -129,6 +129,8 @@ class MessageFormatter:
         text = re.sub(r"~~(.*?)~~", r"<s>\1</s>", text)
         text = re.sub(r"\*\*(.*?)\*\*", r"<b>\1</b>", text)
         text = re.sub(r"\*(.*?)\*", r"<i>\1</i>", text)
+        text = re.sub(r"__(.*?)__", r"<u>\1</u>", text)
+        text = re.sub(r"_(.*?)_", r"<i>\1</i>", text)
         return text
     
     def _wrapping(self, content, is_bot, autor):
@@ -268,7 +270,7 @@ class ImageQueue:
             while self.running:
                 try:
                     filename = await self.deletion_queue.get()
-                    async with session.delete(f"http://127.0.0.1:8080/static/uploads/{filename}") as response:
+                    async with session.delete(f"http://127.0.0.1:8080/images-storage/{filename}") as response:
                         if response.status == 204:
                             logger.debug(f"Image deleted from memory: {filename}")
                         else:
