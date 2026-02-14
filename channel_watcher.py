@@ -120,7 +120,7 @@ class MessageFormatter:
     def _normalize_line(self, text: str) -> str:
         """Odstraní markdowny a převede některé značky na HTML."""
         text = text.strip()
-        text = text.replace("__", "").replace("`", "")
+        text = text.replace("`", "")
         text = text.replace("kh1", "(adv)").replace("kl1", "(dis)")
         for prefix in ("**result**:", "**total**:"):
             if text.lower().startswith(prefix):
