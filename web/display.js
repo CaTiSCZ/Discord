@@ -63,8 +63,15 @@ socket.on("new_message", (data) => {
 socket.on("new_image", (data) => {
     const panelId = data.panel + "-content";
     const imgElement = document.getElementById(panelId);
+    const settings = (globalConfig.panels && globalConfig.panels[data.panel]) || {};
+    let opacity = (settings.img_opacity !== undefined && settings.img_opacity !== "") 
+                        ? parseFloat(settings.img_opacity) 
+                        : 1.0;
+    opacity = isNaN(opacity) ? 1.0 : Math.min(Math.max(opacity, 0), 1);
+
     if (!imgElement) return console.warn("Element with ID " + panelId + " not found.");
     imgElement.onload = () => {
+                imgElement.style.opacity = opacity; 
                 imgElement.classList.add("visible");
                 if (globalConfig.panels && globalConfig.panels[data.panel]) {
                     applyBackground(data.panel, globalConfig.panels[data.panel]);
@@ -175,11 +182,7 @@ function applyPanelStyle(id, settings) {
         img.style.height = "100%";
         img.style.objectPosition = settings.center_content ? "center" : "left top";
         
-        if (settings.img_opacity !== undefined && settings.img_opacity !== "") {
-            img.style.opacity = settings.img_opacity;
-        } else {
-            img.style.opacity = "1";
-        }
+
     } else {
         if (settings.center_content) {
             el.style.textAlign = "center"; // Pro případ více řádků

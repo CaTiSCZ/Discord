@@ -121,6 +121,7 @@ class ConfigGUI:
         self.root.bind('<Key>', self.on_key_press)
         self.root.bind("<Button-1>", lambda e: self.root.focus_set() if not isinstance(e.widget, (tk.Entry, tk.Text)) else None)
         self.root.bind_class("TCombobox", "<MouseWheel>", lambda event: "break")
+        self.root.bind_class("TSpinbox", "<MouseWheel>", lambda event: "break")
 
         self.logger.debug("GUI initialized.")
         self.render_watchers()
@@ -450,17 +451,17 @@ class ConfigGUI:
         ttk.Label(row_limits, text="Interval (s):").pack(side="left")
         var_interval = tk.IntVar(value=watcher.get("interval", 10))
         self.watcher_vars[idx]["interval"] = var_interval
-        ttk.Entry(row_limits, textvariable=var_interval, width=5).pack(side="left", padx=5)
+        ttk.Spinbox(row_limits, from_=1, to=300, textvariable=var_interval, width=5).pack(side="left", padx=5)
         # Rows per Column
         ttk.Label(row_limits, text="Rows/Column:").pack(side="left", padx=(10,0))
         var_rows = tk.IntVar(value=watcher.get("max_rows_per_column", 9))
         self.watcher_vars[idx]["max_rows_per_column"] = var_rows
-        ttk.Entry(row_limits, textvariable=var_rows, width=5).pack(side="left", padx=5)
+        ttk.Spinbox(row_limits, from_=1, to=100, textvariable=var_rows, width=5).pack(side="left", padx=5)
         # Column Width
         ttk.Label(row_limits, text="Column Width:").pack(side="left", padx=(10,0))
         var_colwidth = tk.IntVar(value=watcher.get("max_column_width", 40))
         self.watcher_vars[idx]["max_column_width"] = var_colwidth
-        ttk.Entry(row_limits, textvariable=var_colwidth, width=5).pack(side="left", padx=5)
+        ttk.Spinbox(row_limits, from_=1, to=200, textvariable=var_colwidth, width=5).pack(side="left", padx=5)
         # Manual Clear
         var_clear = tk.BooleanVar(value=watcher.get("manual_clear", False))
         self.watcher_vars[idx]["manual_clear"] = var_clear
@@ -777,10 +778,12 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             row.pack(fill=tk.X, pady=2)
             
             ttk.Label(row, text=f"{label1}:", width=8).pack(side=tk.LEFT)
-            ttk.Entry(row, textvariable=var1, width=8).pack(side=tk.LEFT, padx=(0, 20))
+            spin1 = ttk.Spinbox(row, width=8, from_=0, to=10000, textvariable=var1)
+            spin1.pack(side=tk.LEFT, padx=(0, 20))
             
             ttk.Label(row, text=f"{label2}:", width=8).pack(side=tk.LEFT)
-            ttk.Entry(row, textvariable=var2, width=8).pack(side=tk.LEFT)
+            spin2 = ttk.Spinbox(row, width=8, from_=0, to=10000, textvariable=var2)
+            spin2.pack(side=tk.LEFT)
 
         # Využití tvých stávajících self.vars
         create_geo_row(prop_frame, "X", self.vars['x'], "Width", self.vars['width'])
@@ -790,7 +793,8 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         z_row = ttk.Frame(prop_frame)
         z_row.pack(fill=tk.X, pady=2)
         ttk.Label(z_row, text="Z-Index:", width=8).pack(side=tk.LEFT)
-        ttk.Entry(z_row, textvariable=self.vars['z_index'], width=8).pack(side=tk.LEFT)
+        z_spin = ttk.Spinbox(z_row, textvariable=self.vars['z_index'], width=8, from_=-1000, to=1000)
+        z_spin.pack(side=tk.LEFT)
         ttk.Checkbutton(z_row, text="Auto-size (Content)", variable=self.vars['auto_size']).pack(side=tk.LEFT, padx=10)
 
        
@@ -865,7 +869,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             p_info = panels[p_id]
             is_active = (p_id == self.active_panel_id)
             is_auto = p_info.get("auto_size", False)
-            text_color = p_info.get("color", "#FFFFFF")
+            text_color = p_info.get("text_color", "#FFFFFF")
             center_content = p_info.get("center_content", False)
             is_image_panel = p_info.get("is_image", False)
             
@@ -895,7 +899,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             text_x += (text_offset-1) * 20 if text_offset > 1 else 0
 
             if not text_color:
-                text_color =  global_style.get("color", "#FFFFFF") 
+                text_color =  global_style.get("text_color", "#FFFFFF") 
             label_text = f"{p_id} [AUTO]" if is_auto else (f"{p_id} [IMAGE]" if is_image_panel else p_id)
             self.canvas.create_text(text_x, text_y, text=label_text, anchor=text_anchor, fill=text_color, tags=("panel", p_id))
         
@@ -1000,7 +1004,8 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
 
     def apply_to_obs(self):
         # Kontrola, zda bot vůbec běží přes main_client.engine
-        # (předpokládáme, že engine má v sobě loop nebo běží v asyncio)
+       
+        self.config_data["web_layout"] = self.layout_cfg
         try:
             if dispatcher.loop and dispatcher.loop.is_running():
                 try:
@@ -1026,12 +1031,6 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             messagebox.showerror("Error", f"Failed to save config.json: {e}")
 
     def apply_and_close(self):
-        self.config_data["web_layout"] = self.layout_cfg
-        try:
-            with open(CONFIG_FILE, "w", encoding="utf-8") as f:
-                json.dump(self.config_data, f, indent=4, ensure_ascii=False)
-        except Exception as e:
-            messagebox.showerror("Error", f"Failed to save config.json: {e}")
         self.apply_to_obs() # Poslat do OBS před zavřením
         self.destroy()
         
@@ -1063,7 +1062,7 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         self.apply_and_close_btn.pack(side=tk.RIGHT)
         self.apply_btn = ttk.Button(self.bottom_bar, text="Apply", command=self.apply)
         self.apply_btn.pack(side=tk.RIGHT)
-        ttk.Label(self.bottom_bar, text="💡 Změny se ukládají při opuštění pole.").pack(side=tk.LEFT)
+        ttk.Label(self.bottom_bar, text="💡 Changes saved by leave edit file or enter key. Zero in text size is ignored.").pack(side=tk.LEFT)
 
         # Scrollable Canvas
         self.canvas_frame = ttk.Frame(self.main_container)
@@ -1096,17 +1095,17 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         headers_text = ["ID", "Font Family", "Size", "Center", "Bg color", "Text Color", "<b> Color", "<b> Size", "<i> Color", "<i> Size", "<u> Color", "<u> Size", "<s> Color", "<s> Size"]
         headers_image = ["ID", "Bg color","Center", "Img Fit", "Opacity"]
         mapping_text = [
-                ("font_family", "font_combo"), ("font_size", "text"), 
+                ("font_family", "font_combo"), ("font_size", "number"), 
                 ("center_content", "bool"),
                 ("bg_color", "bg_color"),
                 ("text_color", "color"),
-                ("b_color", "color"), ("b_size", "text"),
-                ("i_color", "color"), ("i_size", "text"), 
-                ("u_color", "color"), ("u_size", "text"), 
-                ("s_color", "color"), ("s_size", "text")
+                ("b_color", "color"), ("b_size", "number"),
+                ("i_color", "color"), ("i_size", "number"), 
+                ("u_color", "color"), ("u_size", "number"), 
+                ("s_color", "color"), ("s_size", "number")
             ]
         mapping_image = [
-                ("bg_color", "bg_color"), ("center_content", "bool"), ("img_fit", "combo_fit"), ("img_opacity", "text"),
+                ("bg_color", "bg_color"), ("center_content", "bool"), ("img_fit", "combo_fit"), ("img_opacity", "float"),
             ]
 
         #row_ids = ["global"] + list(self.layout_cfg.get("panels", {}).keys())
@@ -1133,6 +1132,23 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
                         ent.insert(0, str(val))
                         ent.grid(row=r_idx, column=c_idx, padx=3, pady=3, )
                         ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=ent: self.set_val(r, k, w.get()))
+                    
+                    elif field_type == "float":
+                        spin = ttk.Spinbox(frame, width=8, from_=0.00, to=1.00, increment=0.01)
+                        try:
+                            spin.set(float(val) if val is not None else 1.00)
+                        except ValueError:
+                            spin.set(1.00)
+                        spin.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                        spin.bind("<FocusOut>", lambda e, r=rid, k=key, w=spin: self.set_val(r, k, w.get()))
+                        spin.bind("<Return>", lambda e, r=rid, k=key, s=spin: self.set_val(r, k, s.get()))
+
+                    elif field_type == "number":
+                        spin = ttk.Spinbox(frame, width=8, from_=0, to=10000)
+                        spin.set(val if val is not None else 0)
+                        spin.grid(row=r_idx, column=c_idx, padx=3, pady=3)
+                        spin.bind("<FocusOut>", lambda e, r=rid, k=key, w=spin: self.set_val(r, k, w.get()))
+                        spin.bind("<Return>", lambda e, r=rid, k=key, s=spin: self.set_val(r, k, s.get()))
 
                     elif field_type == "bool":
                         # Checkbox pro centrování
@@ -1188,7 +1204,7 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
                                 op_val = 1.0
                             row_var = tk.DoubleVar(value=op_val)
 
-                            scale = tk.Scale(cell, from_=0, to=1, resolution=0.1, orient=tk.HORIZONTAL,
+                            scale = tk.Scale(cell, from_=0, to=1, resolution=0.01, orient=tk.HORIZONTAL,
                                             showvalue=True, length=60, font=("Arial", 7),
                                             highlightthickness=0, troughcolor="#cccccc", sliderrelief="flat",
                                             variable=row_var,
@@ -1196,6 +1212,7 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
                             scale.set(op_val)
                             scale.grid(row=1, column=0, columnspan=2, sticky="we")
                         c_ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=c_ent, p=btn: self.update_from_entry(r, k, w, p))
+                        c_ent.bind("<Return>", lambda e, r=rid, k=key, w=c_ent, p=btn: self.update_from_entry(r, k, w, p))
                     #pass
         if text_panels:
             draw_section(self.scroll_content, "Text Panels", text_panels, mapping_text, headers_text)
@@ -1215,10 +1232,21 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         return self.layout_cfg.get("panels", {}).get(rid, {}).get(key, "")
 
     def set_val(self, rid, key, val):
+        ignore_values = ["", None]
         if isinstance(val, bool):
             clean_val = val
         else:
             clean_val = str(val).strip()
+
+        if not isinstance(clean_val, bool) and clean_val not in ignore_values:
+            try:
+                #isdigit() nebere záporná čísla, proto tato kontrola:
+                if clean_val.lstrip('-').isdigit():
+                    clean_val = int(clean_val)
+            except ValueError:
+                pass
+        if not key.endswith("_opacity"):
+            ignore_values.extend([0, "0"])
 
         if rid == "global":
             if "global_style" not in self.layout_cfg: 
@@ -1232,7 +1260,7 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
                         self.layout_cfg["panels"][rid][key] = clean_val
                     elif key in self.layout_cfg["panels"][rid]:
                         del self.layout_cfg["panels"][rid][key]
-                if val == "" or val is None or (isinstance(val, bool) and val is False):
+                if clean_val in ignore_values or (isinstance(clean_val, bool) and clean_val is False):
                     # Pokud je hodnota prázdná, smažeme klíč z panelu
                     if key in self.layout_cfg["panels"][rid]:
                         del self.layout_cfg["panels"][rid][key]

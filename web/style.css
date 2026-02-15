@@ -35,7 +35,7 @@ html, body {
   transition: opacity 0.3s ease-in-out;
 }
 .image-panel img.visible {
-  opacity: 1 !important;               /* Cílový stav: plně viditelný */
+  opacity: 1;               /* Cílový stav: plně viditelný */
 }
 
 
