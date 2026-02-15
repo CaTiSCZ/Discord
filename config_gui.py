@@ -793,7 +793,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         ttk.Entry(z_row, textvariable=self.vars['z_index'], width=8).pack(side=tk.LEFT)
         ttk.Checkbutton(z_row, text="Auto-size (Content)", variable=self.vars['auto_size']).pack(side=tk.LEFT, padx=10)
 
-        ttk.Button(prop_frame, text="Apply Geometry", command=self.manual_update).pack(fill=tk.X, pady=10)
+       
         for children in prop_frame.winfo_children():
             for child in children.winfo_children():
                 if isinstance(child, ttk.Entry):
