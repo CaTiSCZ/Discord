@@ -785,8 +785,8 @@ class WebSettingsWindow(tk.Toplevel):
         ttk.Button(z_frame, text="▲ Move Up", command=lambda: self.change_z(1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
         ttk.Button(z_frame, text="▼ Move Down", command=lambda: self.change_z(-1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
 
-        self.prop_frame = ttk.LabelFrame(self.right_frame, text="Panel Geometry (px)", padding=10)
-        self.prop_frame.pack(fill=tk.X, pady=5)
+        prop_frame = ttk.LabelFrame(self.right_frame, text="Panel Geometry (px)", padding=10)
+        prop_frame.pack(fill=tk.X, pady=5)
 
         self.vars = {
             "x": tk.IntVar(), "y": tk.IntVar(),
@@ -806,17 +806,23 @@ class WebSettingsWindow(tk.Toplevel):
             ttk.Entry(row, textvariable=var2, width=8).pack(side=tk.LEFT)
 
         # Využití tvých stávajících self.vars
-        create_geo_row(self.prop_frame, "X", self.vars['x'], "Width", self.vars['width'])
-        create_geo_row(self.prop_frame, "Y", self.vars['y'], "Height", self.vars['height'])
+        create_geo_row(prop_frame, "X", self.vars['x'], "Width", self.vars['width'])
+        create_geo_row(prop_frame, "Y", self.vars['y'], "Height", self.vars['height'])
         
         # Samostatný řádek pro Z-Index (pokud ho v self.vars máš, což bys měla mít)
-        z_row = ttk.Frame(self.prop_frame)
+        z_row = ttk.Frame(prop_frame)
         z_row.pack(fill=tk.X, pady=2)
         ttk.Label(z_row, text="Z-Index:", width=8).pack(side=tk.LEFT)
         ttk.Entry(z_row, textvariable=self.vars['z_index'], width=8).pack(side=tk.LEFT)
         ttk.Checkbutton(z_row, text="Auto-size (Content)", variable=self.vars['auto_size']).pack(side=tk.LEFT, padx=10)
 
-        ttk.Button(self.prop_frame, text="Apply Geometry", command=self.manual_update).pack(fill=tk.X, pady=10)
+        ttk.Button(prop_frame, text="Apply Geometry", command=self.manual_update).pack(fill=tk.X, pady=10)
+        for children in prop_frame.winfo_children():
+            for child in children.winfo_children():
+                if isinstance(child, ttk.Entry):
+                    child.bind("<Return>", lambda e: self.manual_update())
+                    child.bind("<FocusOut>", lambda e: self.manual_update())
+
 
         ttk.Button(self.right_frame, text="Open Font & Style Editor", 
                    command=self.open_style_editor).pack(fill=tk.X, pady=10)
@@ -961,7 +967,7 @@ class WebSettingsWindow(tk.Toplevel):
             self.refresh_layer_table()
             self.draw_panels()
 
-    def manual_update(self):
+    def manual_update(self, event=None):
         if self.active_panel_id:
             p = self.layout_cfg["panels"][self.active_panel_id]
             p["x"] = self.vars["x"].get()
@@ -1182,7 +1188,7 @@ class StyleEditorWindow(tk.Toplevel):
                         combo.set(found_match[0] if found_match else current_val)
                         combo.grid(row=r_idx, column=c_idx, padx=3, pady=3)
                         combo.bind("<<ComboboxSelected>>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get().split(" [")[0]))
-                        combo.bind("<FocusOut>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get().split(" [")[0]))
+                        #combo.bind("<FocusOut>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get().split(" [")[0]))
                     
 
                     elif field_type in ["color", "bg_color"]:
