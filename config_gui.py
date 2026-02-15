@@ -15,6 +15,7 @@ from logger import setup_logger, CallbackHandler, Logging
 from dispatcher import dispatcher
 from image_processor import upload_image, upload_image_from_pil
 from web.server import sio
+from gui_utils import FocusManager, WindowPositionMixIn
 
 
 CONFIG_FILE = "config.json"
@@ -219,30 +220,6 @@ class ConfigGUI:
         y = int((screen_height - height) / 2)
         
         self.root.state('zoomed')
-
-    def center_window(self, target_window, reference_window):
-        """
-        target_window: Okno, které chceme umístit (např. Style Editor)
-        reference_window: Okno, nad kterým se má otevřít (např. Web Settings)
-        """
-        reference_window.update_idletasks()
-        target_window.update_idletasks()
-        
-        # Získání souřadnic a rozměrů referenčního okna
-        ref_x = reference_window.winfo_x()
-        ref_y = reference_window.winfo_y()
-        ref_w = reference_window.winfo_width()
-        ref_h = reference_window.winfo_height()
-
-        width = target_window.winfo_reqwidth()
-        height = target_window.winfo_reqheight()
-        
-        # Výpočet středu
-        x = ref_x + (ref_w // 2) - (width // 2)
-        y = ref_y + (ref_h // 2) - (height // 2)
-        
-        target_window.geometry(f"+{x}+{y}")
-        target_window.deiconify()  # Zobrazí okno na správném místě
     
     def _on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -263,13 +240,12 @@ class ConfigGUI:
         self.root.after(0, lambda: self.conn_canvas.itemconfig(self.conn_dot, fill=color))
 
     def open_web_settings(self):
-        settings_win = WebSettingsWindow(self.root, self.config) # Předpokládám, že třída bere self jako parent
+        settings_win = WebSettingsWindow(self.root, self.config) 
         settings_win.main_app = self
         settings_win.transient(self.root)
         # target je settings_win, reference je self (hlavní GUI)
-        self.center_window(settings_win, self.root)
+        settings_win.place_relative_to(self.root, position="nw", offset_x=50, offset_y=50)
         
-    
     def load_config(self):
         if not os.path.exists(CONFIG_FILE):
             return {"TOKEN": "", "watchers": []}
@@ -695,10 +671,11 @@ class ConfigGUI:
         self.root.destroy()
         sys.exit(0)
 
-class WebSettingsWindow(tk.Toplevel):
+class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
     def __init__(self, parent, config):
         super().__init__(parent)
         self.withdraw()  # Skryje okno během inicializace
+        self.setup_focus_management()
         self.transient(parent)
         self.main_app = None
 
@@ -1019,7 +996,7 @@ class WebSettingsWindow(tk.Toplevel):
         style_win = StyleEditorWindow(self, self.layout_cfg, self.apply_to_obs, self.draw_panels)
         style_win.main_app = self.main_app
         style_win.transient(self)
-        self.main_app.center_window(style_win, self)
+        style_win.place_relative_to(self, position="nw", offset_x=20, offset_y=20)
 
     def apply_to_obs(self):
         # Kontrola, zda bot vůbec běží přes main_client.engine
@@ -1058,11 +1035,12 @@ class WebSettingsWindow(tk.Toplevel):
         self.apply_to_obs() # Poslat do OBS před zavřením
         self.destroy()
         
-class StyleEditorWindow(tk.Toplevel):
+class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
     def __init__(self, parent, layout_cfg, on_save_callback, on_update_callback):
         super().__init__(parent)
         self.withdraw()
-        self.title("Font & Tag Style Editor")
+        self.setup_focus_management()
+        self.title("Font & Style Editor")
         
         # Geometrii nenastavujeme fixně, necháme ji dýchat
         self.transient(parent)
