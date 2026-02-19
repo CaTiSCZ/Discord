@@ -55,14 +55,38 @@ DEFAULT_LAYOUT = {
         "s_size": ""
     },
     "panels": {
-        "panel-a": {"x": 2, "y": 680, "z_index": 5, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
-        "panel-b": {"x": 2, "y": 1020, "z_index": 5, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
-        "panel-c": {"x": 1260, "y": 680, "z_index": 5, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
-        "panel-d": {"x": 2, "y": 2, "z_index": 10, "font_size": 31, "color": "#ffffff", "bold": False, "italic": False},
-        "panel-e": {"x": 2, "y": 1300, "width": 2556, "height": 100, "z_index": 5,"font_size": 40, "color": "#ffffff", "bold": False, "italic": False},
-        "panel-o": {"x": 2, "y": 2, "width" :2556,"height" :1434,"z_index" :0}
+        "panel-a": {"x": 2, "y": 680, "width": 2000, "height": 350, "z_index": 5, "bold": False, "italic": False, "auto_size": True, "column_width": 650, "column_spacing": 10},
+        "panel-b": {"x": 2, "y": 1020, "width": 2556, "height": 410, "z_index": 5, "bold": False, "italic": False, "auto_size": True},
+        "panel-c": {"x": 1260, "y": 680, "width": 1300, "height": 350, "z_index": 5, "bold": False, "italic": False, "auto_size": True},
+        "panel-d": {"x": 2, "y": 2, "width": 2556, "height": 1434, "z_index": 10,  "bold": False, "italic": False, "auto_size": True},
+        "panel-e": {"x": 2, "y": 1300, "width": 2556, "height" :100,"z_index" :5,"font_size" :40, "bold" :False,"italic" :False, "auto_size" :False},
+        "panel-o":{"x" :2,"y" :2,"width" :2556,"height" :1434,"z_index" :0, "img_fit": "contain", "img_opacity": 1, "is_image": True, "auto_size" :False}
     }
 }
+DEFAULT_TEXT_PANEL = {
+    "x": 2,
+    "y": 680,
+    "width": 2000,
+    "height": 350,
+    "z_index": 5,
+    "bold": False,
+    "italic": False,
+    "auto_size": True,
+    "column_width": 650
+}
+DEFAULT_IMG_PANEL = {
+    "x": 2,
+    "y": 2,
+    "width": 2556,
+    "height": 1434,
+    "z_index": 0,
+    "img_fit": "contain",
+    "img_opacity": 1,
+    "is_image": True,
+    "auto_size": False
+}
+    
+    
 
 def set_widget_state(widget, enable=False):
     state = 'normal' if enable else 'disabled'
@@ -755,13 +779,13 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side=tk.LEFT, fill=tk.X, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.tree.bind("<<TreeviewSelect>>", self.on_layer_selected)
+        self.tree.bind("<<TreeviewSelect>>", self.get_val_selected)
         self.tree.bind("<Double-1>", self.toggle_panel_type)
 
         z_frame = ttk.Frame(self.right_frame)
         z_frame.pack(fill=tk.X, pady=5)
-        ttk.Button(z_frame, text="▲ Move Up", command=lambda: self.change_z(1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
-        ttk.Button(z_frame, text="▼ Move Down", command=lambda: self.change_z(-1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
+        ttk.Button(z_frame, text="▲ Move Up", command=lambda: self.set_val_change_z(1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
+        ttk.Button(z_frame, text="▼ Move Down", command=lambda: self.set_val_change_z(-1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
 
         prop_frame = ttk.LabelFrame(self.right_frame, text="Panel Geometry (px)", padding=10)
         prop_frame.pack(fill=tk.X, pady=5)
@@ -769,7 +793,8 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         self.vars = {
             "x": tk.IntVar(), "y": tk.IntVar(),
             "width": tk.IntVar(), "height": tk.IntVar(),
-           "z_index" : tk.IntVar(), "auto_size": tk.BooleanVar(value=True)
+            "z_index" : tk.IntVar(), "auto_size": tk.BooleanVar(value=True),
+            "column_width": tk.IntVar()
         }
 
         # Pomocná funkce pro vytvoření řádku se dvěma poli
@@ -796,13 +821,18 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         z_spin = ttk.Spinbox(z_row, textvariable=self.vars['z_index'], width=8, from_=-1000, to=1000)
         z_spin.pack(side=tk.LEFT)
         ttk.Checkbutton(z_row, text="Auto-size (Content)", variable=self.vars['auto_size']).pack(side=tk.LEFT, padx=10)
+        row_column_width = ttk.Frame(prop_frame)
+        row_column_width.pack(fill=tk.X, pady=2)
+        ttk.Label(row_column_width, text="Column Width (px):", width=20).pack(side=tk.LEFT)
+        column_width_spin = ttk.Spinbox(row_column_width, textvariable=self.vars['column_width'], width=8, from_=0, to=1000)
+        column_width_spin.pack(side=tk.LEFT)
 
        
         for children in prop_frame.winfo_children():
             for child in children.winfo_children():
                 if isinstance(child, ttk.Entry):
-                    child.bind("<Return>", lambda e: self.manual_update())
-                    child.bind("<FocusOut>", lambda e: self.manual_update())
+                    child.bind("<Return>", lambda e: self.set_val_active_panel())
+                    child.bind("<FocusOut>", lambda e: self.set_val_active_panel())
 
 
         ttk.Button(self.right_frame, text="Open Font & Style Editor", 
@@ -885,7 +915,12 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
                 overlay = Image.new('RGBA', (max(1, w), max(1, h)), (0, 120, 215, 230))
                 overlay_image_panel = Image.new('RGBA', (max(1, w), max(1, h)), (83, 136, 99, 230))
                 self.active_overlay_img = ImageTk.PhotoImage(overlay_auto) if is_auto else ImageTk.PhotoImage(overlay_image_panel if is_image_panel else overlay)
-                self.canvas.create_image(x, y, image=self.active_overlay_img, anchor="nw", tags=("panel", p_id))            
+                self.canvas.create_image(x, y, image=self.active_overlay_img, anchor="nw", tags=("panel", p_id))
+
+                cw_val = p_info.get("column_width", 0)
+                if cw_val > 0: 
+                    cw_scaled = int(cw_val * self.scale)
+                    self.canvas.create_rectangle(x, y, x+cw_scaled, y+h, outline="#FFD700",width=1, dash=(2,2), tags=("panel", p_id, "column_width"))           
         
             self.canvas.create_rectangle(x, y, x+w, y+h, fill= "", outline=outline_color, width=2 if is_active else 1, tags=("panel", p_id), dash=dash_style)
             if center_content:
@@ -905,7 +940,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         
         self.canvas.tag_lower("bg_img")
 
-    def on_layer_selected(self, event):
+    def get_val_selected(self, event):
         if not self.manual_select:
             return
         selected = self.tree.selection()
@@ -932,9 +967,11 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             self.vars["height"].set(p.get("height", 100)) # Default 100
             self.vars["z_index"].set(p.get("z_index", 0))
             self.vars["auto_size"].set(p.get("auto_size", False))
+            cw = p.get("column_width", 0) 
+            self.vars["column_width"].set(cw if cw is not None else 0)
         self.draw_panels()
         
-    def change_z(self, delta):
+    def set_val_change_z(self, delta):
         if self.active_panel_id and not self.selected_pannels:
             p = self.layout_cfg["panels"][self.active_panel_id]
             # Změníme hodnotu přímo v slovníku layout_cfg
@@ -948,15 +985,26 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             self.refresh_layer_table()
             self.draw_panels()
 
-    def manual_update(self, event=None):
+    def set_val_active_panel(self, event=None):
         if self.active_panel_id:
             p = self.layout_cfg["panels"][self.active_panel_id]
-            p["x"] = self.vars["x"].get()
-            p["y"] = self.vars["y"].get()
-            p["width"] = self.vars["width"].get()
-            p["height"] = self.vars["height"].get()
-            p["z_index"] = self.vars["z_index"].get()
-            p["auto_size"] = self.vars["auto_size"].get()
+            try:                # Ověření, že všechny hodnoty jsou platné
+                p["x"] = self.vars["x"].get()
+                p["y"] = self.vars["y"].get()
+                p["width"] = self.vars["width"].get()
+                p["height"] = self.vars["height"].get()
+                p["z_index"] = self.vars["z_index"].get()
+                p["auto_size"] = self.vars["auto_size"].get()
+                try:
+                    cw = self.vars["column_width"].get()
+                    if cw > 0:
+                        p["column_width"] = cw
+                    else:
+                        p.pop("column_width", None)
+                except:
+                    p.pop("column_width", None)
+            except tk.TclError:
+                return
             self.draw_panels()
             self.refresh_layer_table()
 
@@ -993,7 +1041,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
 
     def on_stop_drag(self, event):
         if self._drag_data["item"]:
-            self.manual_update()
+            self.set_val_active_panel()
             self._drag_data["item"] = None
 
     def open_style_editor(self):

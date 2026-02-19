@@ -44,158 +44,149 @@ socket.on("connect", () => {
     console.log("Socket.io connected");
 });
 
-
-// Zpracování nové zprávy (odpovídá tvému ws.onmessage)
-socket.on("new_message", (data) => {
-    const panelId = data.panel + "-content";
-    const el = document.getElementById(panelId);
-    // Formatter posílá pole řádků (data.lines), spojíme je do textu
-    if (el) {
-        const lines = Array.isArray(data.lines) ? data.lines : [];
-        el.innerHTML = lines.join("\n");
-        if (globalConfig.panels && globalConfig.panels[data.panel]) {
-            applyBackground(data.panel, globalConfig.panels[data.panel]);
-        }
-    } else {
-        console.warn("Element with ID " + panelId + " not found.");
-    }
-});
-socket.on("new_image", (data) => {
-    const panelId = data.panel + "-content";
-    const imgElement = document.getElementById(panelId);
-    const settings = (globalConfig.panels && globalConfig.panels[data.panel]) || {};
-    let opacity = (settings.img_opacity !== undefined && settings.img_opacity !== "") 
-                        ? parseFloat(settings.img_opacity) 
-                        : 1.0;
-    opacity = isNaN(opacity) ? 1.0 : Math.min(Math.max(opacity, 0), 1);
-
-    if (!imgElement) return console.warn("Element with ID " + panelId + " not found.");
-    imgElement.onload = () => {
-                imgElement.style.opacity = opacity; 
-                imgElement.classList.add("visible");
-                if (globalConfig.panels && globalConfig.panels[data.panel]) {
-                    applyBackground(data.panel, globalConfig.panels[data.panel]);
-                } 
-            };
-    imgElement.onerror = () => {
-            console.warn("Image failed to load:", data.url);
-            if (globalConfig.panels && globalConfig.panels[data.panel]) {
-                applyBackground(data.panel, globalConfig.panels[data.panel]);
-            } 
-        };   
-        
-        
-    if (data.url && data.url.trim() !== "") {
-        imgElement.src = data.url;
-    } else {
-        imgElement.classList.remove("visible");
-        imgElement.onload = null;
-        imgElement.onerror = null;
-        setTimeout(() => { 
-            if (!imgElement.classList.contains("visible")) {
-                imgElement.src = ""; 
-                if (globalConfig.panels && globalConfig.panels[data.panel]) {
-                    applyBackground(data.panel, globalConfig.panels[data.panel]);
-                } 
-            }
-        }, 350); 
-    }
-     
-});
 let globalConfig = {}; // Schováme si config pro pozdější použití
+
 socket.on("init_layout", (config) => {
     if (!config || !config.panels) return;
     console.log("Loading layout from server:", config);
     globalConfig = config; // Uložíme do globální proměnné
     for (const [id, settings] of Object.entries(config.panels)) {
-        applyBackground(id, settings);
         applyPanelStyle(id, settings);
     }
+});
+
+// Zpracování nové zprávy (odpovídá tvému ws.onmessage)
+socket.on("new_message", (data) => {
+    const contentEl = document.getElementById(`${data.panel}-content`);
+    // Formatter posílá pole řádků (data.lines), spojíme je do textu
+    if (contentEl) {
+        if (!data.messages || data.messages.length === 0) {
+            contentEl.innerHTML = "";
+            contentEl.style.display = "none";
+            return;
+        }
+        const settings = (globalConfig.panels && globalConfig.panels[data.panel]) || {};
+        contentEl.style.display = "inline-block";
+        contentEl.innerHTML = data.messages.map(msg => {
+            return addAuthor(msg);
+        }).join("<br>");
+        requestAnimationFrame(() => fitText(data.panel));
+    } else {
+        console.warn("Element with ID " + data.panel + " not found.");
+    }
+});
+
+socket.on("new_image", (data) => {
+    const el = document.getElementById(data.panel);
+    const imgEl = document.getElementById(`${data.panel}-content`);
+    if (!imgEl) {
+        console.warn("Element with ID " + data.panel + " not found."); 
+        return;
+    }
+    if (!data.url || data.url.trim() === "") {
+        imgEl.style.display = "none"
+        el.style.display = "none"
+
+        imgElement.classList.remove("visible");
+    } else {
+        imgEl.classList.add("visible");
+        imgEl.src = data.url;
+        imgEl.style.display = "block"
+        el.style.display = "block"
+    }
+     
 });
 
 socket.on("disconnect", () => {
   console.log("Socket.io disconnected");
 });
 
-function applyBackground(id, settings) {
-    const el = document.getElementById(id);
-    const content = document.getElementById(`${id}-content`);
-    if (!el || !content) return;
-    const globalStyle = globalConfig.global_style || {};
-    const isImage = settings.is_image;
-    const hasContent = isImage 
-        ? (content.src && !content.src.endsWith('/') && content.getAttribute('src') !== "")
-        : (content.innerHTML.trim() !== "");
-    el.style.backgroundColor = "transparent";
-    if (hasContent) {
-        // Barva a Průhlednost
-        const bgColor = settings.bg_color || globalStyle.bg_color || "transparent";
-        const bgOpacity = (settings.bg_color_opacity !== undefined) ? settings.bg_color_opacity : 
-                          (globalStyle.bg_color_opacity !== undefined ? globalStyle.bg_color_opacity : 1.0);
-        content.style.backgroundColor = setBgColor(bgColor, bgOpacity);
-        content.style.padding = settings.is_image ? "0px" : "10px";
-        
-    } else {
-        // Pokud není obsah, panel musí být neviditelný
-        content.style.backgroundColor = "transparent";
-        content.style.padding = "0px";
+function addAuthor(msgData) {
+    let text = Array.isArray(msgData.content) ? msgData.content.join("<br>") : msgData.content;
+    let showAuthor = false;
+    const mode = msgData.show_author;
+    const isBot = msgData.is_bot || false;
+    if (mode === "both") showAuthor = true;
+    else if (mode === "bot" && isBot) showAuthor = true;
+    else if (mode === "human" && !isBot) showAuthor = true;
+
+    if (showAuthor && msgData.author) {
+        return `<b class = "author-name">${msgData.author}:</b><br> ${text}`;
+    }
+    return text;
+}
+
+function fitText(panelId) {
+    const el = document.getElementById(panelId);
+    const contentEl = document.getElementById(`${panelId}-content`);
+    if (!el || !contentEl || !globalConfig.panels[panelId]) return;
+
+    const data = globalConfig.panels[panelId];
+    const global = globalConfig.global_style;
+    const baseFontSize = data.font_size || global.font_size || 30;
+    const minFontSize = baseFontSize * 0.75;
+
+    let currentFontSize = baseFontSize;
+    contentEl.style.fontSize = `${currentFontSize}px`;
+
+    // Pokud obsah přetéká (výšku nebo šířku), zmenšuj dokud to jde
+    while (
+        (contentEl.scrollHeight > el.offsetHeight || contentEl.scrollWidth > el.offsetWidth) &&
+        currentFontSize > minFontSize
+    ) {
+        currentFontSize -= 1;
+        contentEl.style.fontSize = `${currentFontSize}px`;
     }
 }
 
 function applyPanelStyle(id, settings) {
     const el = document.getElementById(id);
-    const content = document.getElementById(`${id}-content`);
-    if (!el || !content) return;
+    const contentEl = document.getElementById(`${id}-content`);
+    
+    if (!el || !contentEl) return;
     const globalStyle = globalConfig.global_style || {};
+    const bgColor = settings.bg_color || globalStyle.bg_color || "transparent";
+    const bgOpacity = settings.bg_color_opacity || globalStyle.bg_color_opacity || 1.0;
+    const isCentered = settings.center_content || false
     // Geometrie
     el.style.left = settings.x + "px";
     el.style.top = settings.y + "px";
+    el.style.width = settings.width + "px";
+    el.style.height = settings.height + "px";
     el.style.zIndex = settings.z_index !== undefined ? settings.z_index : 1;
-    if (settings.auto_size) {
-        // Režim maximální velikosti (přizpůsobí se obsahu)
-        el.style.width = "auto";
-        el.style.height = "auto";
-        el.style.maxWidth = settings.width + "px";
-        el.style.maxHeight = settings.height + "px";
-    } else {
-        // Fixní režim
-        el.style.width = settings.width + "px";
-        el.style.height = settings.height + "px";
-        el.style.maxWidth = "none";
-        el.style.maxHeight = "none";
-    }
-    el.style.flexDirection = "column";
-    el.style.display = "flex";
-    if (settings.center_content) {
-            el.style.justifyContent = "center";
-            el.style.alignItems = "center";
-        } else {
-            el.style.justifyContent = "flex-start";
-            el.style.alignItems = "flex-start";
-        }
+
+    el.style.justifyContent = isCentered ? 'center' : 'flex-start';
+    el.style.alignItems = isCentered ? 'center' : 'flex-start';
+    
+
     if (settings.is_image) {
         const img = el.querySelector("img");
         if (!img) return;
-        img.style.display = "block";
+        el.style.backgroundColor = hexToRgba(bgColor, bgOpacity); // Pozadí vyplní celý panel
+        contentEl.style.backgroundColor = "transparent";
         img.style.objectFit = settings.img_fit || "contain";
-        img.style.width = "100%";
-        img.style.height = "100%";
-        img.style.objectPosition = settings.center_content ? "center" : "left top";
-        
-
+        let opacity = (settings.img_opacity !== undefined && settings.img_opacity !== "") 
+                        ? parseFloat(settings.img_opacity) 
+                        : 1.0;
+        opacity = isNaN(opacity) ? 1.0 : Math.min(Math.max(opacity, 0), 1);
+        img.style.opacity = opacity; 
     } else {
-        if (settings.center_content) {
-            el.style.textAlign = "center"; // Pro případ více řádků
-            content.style.textAlign = "center";
+        if (settings.column_width) {
+            contentEl.style.columnWidth = `${settings.column_width}px`; 
+            contentEl.style.columnGap = `${settings.column_spaceing || 20}px`;
+            contentEl.style.width = "fit-content";
         } else {
-            el.style.textAlign = "left"; // Zarovnání doleva pro celý panel
-            content.style.textAlign = "left";
+            contentEl.style.columnWidth = "auto";
+            contentEl.style.width = "100%";
         }
-        content.style.display = "inline-block";
+        
+        contentEl.style.backgroundColor = hexToRgba(bgColor, bgOpacity);
+        el.style.backgroundColor = "transparent";
         // Základní textové styly
-        content.style.fontFamily = settings.font_family || globalStyle.font_family || "inherit";
-        content.style.fontSize = (settings.font_size || globalStyle.font_size || 24) + "px";
-        content.style.color = settings.text_color || globalStyle.text_color || "#ffffff";
+        contentEl.style.textAlign = isCentered ? 'center' : 'left';
+        contentEl.style.fontFamily = settings.font_family || globalStyle.font_family || "inherit";
+        contentEl.style.fontSize = (settings.font_size || globalStyle.font_size || 24) + "px";
+        contentEl.style.color = settings.text_color || globalStyle.text_color || "#ffffff";
         
         // Tagy (b, i, u, s) - ponecháme tvou logiku se styleTagem
         let styleTag = el.querySelector('style');
@@ -216,7 +207,7 @@ function applyPanelStyle(id, settings) {
     }
 }
 
-function setBgColor( hexColor, opacity) {
+function hexToRgba( hexColor, opacity) {
     if (!hexColor || hexColor === "transparent") return "transparent";
     let r = 0, g = 0, b = 0;
     if (hexColor.startsWith('#')) {

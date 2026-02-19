@@ -24,50 +24,48 @@ class MessageFormatter:
     def format_messages(self, msgs):
         messages = []
         for msg in msgs:
-            message = []
+            
             if msg.author.name == "Avrae":
-                content = self._process_roll(msg)
+                content = self._process_roll(msg) # obsahuje kompletní zprávu včetně jména hráče který hodil - může se rovnou předat pro zpracování do sloupců
             else:
-                content = [self._normalize_line(l) for l in msg.content.splitlines()]
+                content = [self._normalize_line(l) for l in msg.content.splitlines()] # řádky zprávy zbavené markdown atd.
             is_bot =  msg.author.bot
             autor = re.sub(r"\s*\([^)]*\)\s*$", "", msg.author.display_name)
-
-            message = self._wrapping(content, is_bot, autor)
-            messages.extend(message)
-
-        return self._format_columns_all(messages)
+            messages.append({
+                "content": content, # Již znormalizovaný text (bold, italika...)
+                "author": autor,
+                "is_bot": is_bot,
+                "show_author": self.show_author_mode 
+            }) 
+        return messages
     
     def _process_roll(self, msg):
         """Rozhodne, jestli jde o single/multi roll a zavolá parser."""
         lines = [self._normalize_line(l) for l in msg.content.splitlines()]
-        author = re.sub(r"\s*\([^)]*\)\s*$", "", msg.mentions[0].display_name)
+        player_name = re.sub(r"\s*\([^)]*\)\s*$", "", msg.mentions[0].display_name)
         
         if len(lines) == 3:
-            return self._parse_single_roll(lines, author)
+            return self._parse_single_roll(lines, player_name)
         elif len(lines) >= 5:
-            return self._parse_multi_roll(lines, author)
+            return self._parse_multi_roll(lines, player_name)
         return []    
 
-    def _parse_single_roll(self, lines: List[str], author: str) -> List[str]:
+    def _parse_single_roll(self, lines: List[str], player_name: str) -> List[str]:
         """Parse single roll (3 lines): player, rollline, total"""
         try:
             player_line, roll_line, total_value = lines
             
         except ValueError:
             return []
-        player_name = author
         return [f"{player_name}: {roll_line.strip()} = {total_value.strip()}"]
 
-    def _parse_multi_roll(self, lines: List[str], author: str) -> List[str]:
+    def _parse_multi_roll(self, lines: List[str], player_name: str) -> List[str]:
         """
         Parse multi roll (≥5 lines). Vrací hlavičku a jednotlivé řádky s číslováním.
         Implementace věrná původní logice.
         """
         if not lines:
             return []
-        
-        player_name = author
-
         rolling_line_idx = next((i for i, l in enumerate(lines) if "Rolling" in l), 1)
         rolling_line = lines[rolling_line_idx]
         user_text = (rolling_line.split(":", 1)[0].strip() + ": ") if ":" in rolling_line else ""
@@ -132,90 +130,14 @@ class MessageFormatter:
         text = re.sub(r"__(.*?)__", r"<u>\1</u>", text)
         text = re.sub(r"_(.*?)_", r"<i>\1</i>", text)
         return text
-    
-    def _wrapping(self, content, is_bot, autor):
-        """Zalomí řádky podle maximálního počtu znaků na řádek, přidá odsazení pokud je zobrazen autor."""
-        message = []
-        wrapped_lines = []
-        if not content:
-            return message
-        indent = '&nbsp;' * (len(autor) + 2)
-        if self.show_author_mode == "both" \
-                or (is_bot and self.show_author_mode == "bot") \
-                or (not is_bot and self.show_author_mode == "human"):
-            for line in content:
-                wrapped_lines.extend(self._smart_wrap(line, (self.max_column_width - (len(autor) + 2))))
-            message.append(f"{autor}: {wrapped_lines[0]}")
-            for l in wrapped_lines[1:self.max_rows_per_column-1]:
-                message.append(f"{indent}{l}")
-            for l in wrapped_lines[self.max_rows_per_column-1:]:
-                message.append(l)
-        else:
-            for line in content:
-                message.extend(self._smart_wrap(line, self.max_column_width))  
-            
-        return message 
-
-    def _format_columns_all(self, content_lines: List[str]) -> List[str]:
-        """Zformátuje řádky do column layoutu."""
-        all_lines = []
-        if self.header_text and content_lines:
-            all_lines.append(self.header_text)
-        all_lines.extend(content_lines)
-        n = len(all_lines)
-        if n <= self.max_rows_per_column:
-            # Jen jeden sloupec           
-            return all_lines
-        # Více sloupců
-        num_cols = (n + self.max_rows_per_column - 1) // self.max_rows_per_column
-        cols = []
-        for c in range(num_cols):
-            start = c * self.max_rows_per_column
-            end = min(start + self.max_rows_per_column, n)
-            cols.append(all_lines[start:end])
-        col_widths = [min(max(self._visible_len(line) for line in col), self.max_column_width) for col in cols]
-        max_len = max(len(col) for col in cols)
-        for col in cols:
-            while len(col) < max_len:
-                col.append("")
-        output_lines = []
-        for i in range(max_len):
-            row = ""
-            for col, width in zip(cols, col_widths):
-                line = col[i]
-                pad_len = width - self._visible_len(line)
-                row += line + ('&nbsp;' * (pad_len + self.column_spacing))
-            output_lines.append(row.rstrip())
         
-        return output_lines
-    
     def _visible_len(self, s: str) -> int:
         """Vrátí délku textu bez HTML tagů a entit."""
         clean = re.sub(r"<[^>]*>", "", s)
         clean = clean.replace("&nbsp;", " ")
         return len(clean)
 
-    def _smart_wrap(self, text: str, width: int) -> List[str]:
-        """Zalamuje text podle viditelné délky (ignoruje HTML tagy)."""
-        words = text.split()
-        lines = []
-        current = ""
-        current_len = 0
-        for w in words:
-            w_len = self._visible_len(w)
-            if current_len + (1 if current else 0) + w_len > width:
-                lines.append(current)
-                current = w
-                current_len = w_len
-            else:
-                if current:
-                    current += " "
-                    current_len += 1
-                current += w
-                current_len += w_len
-        if current:
-            lines.append(current)
-        return lines or [""]
+    
     
 class ImageQueue:
     def __init__(self, interval, panel, sio):
@@ -325,6 +247,7 @@ class ChannelWatcher:
             return
         
         async with self._lock:
+            self.is_content = True
             if self.image_panel is not None:
                 found_urls = self._remove_url(message)
                 
@@ -335,7 +258,7 @@ class ChannelWatcher:
                     self.images.add_images(message.attachments)
                     logger.debug("Img received")
 
-            if self.socket_panel is not None:
+            if self.socket_panel is not None and self.is_content:
                 logger.debug(f"Content for text panel = {message.content}")
                 self._cleanup_expired_messages()          
 
@@ -382,6 +305,9 @@ class ChannelWatcher:
             logger.debug(f"Content s URL = {message.content}")
             message.content = re.sub(url_pattern, '', message.content).strip()
             logger.debug(f"Content bez URL = {message.content}")
+            c = re.sub(" ", "", message.content).strip()
+            if c == "":
+                self.is_content = False
         return found_urls
 
     async def clear_content(self):
@@ -417,28 +343,29 @@ class ChannelWatcher:
         logger.debug(f"Watcher {self.channel_id}: refresh display with {len(self.active_messages)} active messages.")
         objs = [m["msg_obj"] for m in self.active_messages]
         
-        formatted_lines = self.formatter.format_messages(objs)
+        formatted_messages = self.formatter.format_messages(objs)
         
         if self.type_output in ("socket", "both"):    
             await self.sio.emit("new_message", {
                 "panel": self.socket_panel,
-                "lines": formatted_lines
+                "messages": formatted_messages
             })
-            logger.debug(f"Watcher {self.channel_id}: sent {len(formatted_lines)} rows on panel {self.socket_panel} trough Socket.io.")
+            logger.debug(f"Watcher {self.channel_id}: sent {len(formatted_messages)} messages on panel {self.socket_panel} trough Socket.io.")
 
         if self.type_output in ("txt", "both"): 
-            self._write_to_file(formatted_lines)
+            self._write_to_file(formatted_messages)
 
     def _write_to_file(self, lines):
+        lines_for_file = []
+        for msg in lines:
+            for line in msg["content"] if isinstance(msg["content"], list) else [msg["content"]]:
+                clean = re.sub(r"<s>(.*?)</s>", r"-\1-", line)
+                clean = re.sub(r"<[^>]*>", "", clean)
+                clean = clean.replace("&nbsp;", " ")
+                lines_for_file.append(clean)
         """Uloží zprávu do souboru"""
         try:
             with open(self.file_path, "w", encoding="utf-8") as f:
-                processed_lines = []
-                for l in lines:
-                    l = re.sub(r"<s>(.*?)</s>", r"-\1-", l)
-                    l = re.sub(r"<[^>]*>", "", l)
-                    l = l.replace("&nbsp;", " ")
-                    processed_lines.append(l)
-                f.write("\n".join(processed_lines))
+                f.write("\n".join(lines_for_file))
         except Exception as e:
             logger.error(f"Error due to write to file: {e}")
