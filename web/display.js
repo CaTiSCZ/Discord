@@ -169,7 +169,8 @@ function applyPanelStyle(id, settings) {
                         ? parseFloat(settings.img_opacity) 
                         : 1.0;
         opacity = isNaN(opacity) ? 1.0 : Math.min(Math.max(opacity, 0), 1);
-        img.style.opacity = opacity; 
+        img.style.opacity = opacity;
+        img.style.objectPosition = settings.center_content ? "center" : "left top"; 
     } else {
         if (settings.column_width) {
             contentEl.style.columnWidth = `${settings.column_width}px`; 

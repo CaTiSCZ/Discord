@@ -1,3 +1,6 @@
+:root {
+  --default-font: 'Courier New', Courier, monospace;
+}
 /* Reset */
 html, body {
   margin: 0;
@@ -6,22 +9,40 @@ html, body {
   height: 100%;
   background: transparent;
   overflow: hidden;
+  font-family: var(--default-font);
+
 }
 
 
 /* Obecný panel */
 .panel {
   position: absolute;
+  display: flex;
   box-sizing: border-box;
   overflow: hidden;
 }
 
 /* Textový obsah */
 .content-area {
-    white-space: pre;           /* Zásadní: zachová mezery a konce řádků z Pythonu */
+    display: none;
     line-height: 1.2;           /* Výška řádku pro lepší čitelnost */
     text-shadow: 1px 1px 2px black; /* Přidá stín pro lepší čitelnost na různých pozadích */
+    width: fit-content;    /* Smrští šířku podle textu/sloupců */
+    max-width: 100%;       /* Ale nepřeteče panel */
+    height: fit-content;   /* Smrští výšku podle řádků */
+    max-height: 100%;      /* Ale nepřeteče panel */
+    padding: 10px;         /* Definovaný okraj (cca 10px) */
+    box-sizing: border-box;
+    
+    /* Sloupcový layout */
+    column-fill: auto;
+    
+    /* Ošetření textu */
+    white-space: normal;
+    word-wrap: break-word;
+
 }
+
 
 /* Definice stylů pro tagy, které vyrobíš v normalize_line */
 .content-area b, .content-area strong {font-weight: bold;}
@@ -29,8 +50,16 @@ html, body {
 .content-area u {text-decoration: underline;}
 .content-area s, .content-area strike {text-decoration: line-through;}
 
+.image-panel {
+  display: none;
+}
+
 .image-panel img {
-  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0px;
+  display: none;
+  object-fit: contain;
   opacity: 0;                /* Výchozí stav: neviditelný */
   transition: opacity 0.3s ease-in-out;
 }
@@ -38,8 +67,8 @@ html, body {
   opacity: 1;               /* Cílový stav: plně viditelný */
 }
 
-
-.content-area:empty {
-  background-color: transparent !important;
-  padding: 0 !important;
+.image-panel img[src=""] {
+  display: none;
 }
+
+
