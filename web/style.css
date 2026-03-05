@@ -27,23 +27,31 @@ html, body {
     display: none;
     line-height: 1.2;           /* Výška řádku pro lepší čitelnost */
     text-shadow: 1px 1px 2px black; /* Přidá stín pro lepší čitelnost na různých pozadích */
-    width: fit-content;    /* Smrští šířku podle textu/sloupců */
+    width: 100%;    /* Smrští šířku podle textu/sloupců */
     max-width: 100%;       /* Ale nepřeteče panel */
-    height: fit-content;   /* Smrští výšku podle řádků */
+    height: auto;   /* Smrští výšku podle řádků */
     max-height: 100%;      /* Ale nepřeteče panel */
     padding: 10px;         /* Definovaný okraj (cca 10px) */
     box-sizing: border-box;
     
     /* Sloupcový layout */
     column-fill: auto;
+    column-width: var(--col-width, auto);
+    column-gap: 20px;
     
     /* Ošetření textu */
     white-space: normal;
     word-wrap: break-word;
 
 }
-
-
+.msg-unit {
+    display: block;
+    width: 100%;
+    margin-bottom: 1em; 
+}
+.msg-unit:last-child {
+    margin-bottom: 0;           /* Poslední zpráva nemá mezeru dole */
+}
 /* Definice stylů pro tagy, které vyrobíš v normalize_line */
 .content-area b, .content-area strong {font-weight: bold;}
 .content-area i, .content-area em { font-style: italic;}
