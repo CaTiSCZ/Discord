@@ -65,15 +65,14 @@ socket.on("new_message", (data) => {
             contentEl.style.display = "none";
             return;
         }
-        const settings = (globalConfig.panels && globalConfig.panels[data.panel]) || {};
         //contentEl.style.display = settings.column_width ? "table" : "inline-block";
         contentEl.style.display = "inline-block"
         contentEl.innerHTML = data.messages.map(msg => {
             return `<div class="msg-unit">${addAuthor(msg)}</div>`;
-        }).join("");
+        }).join("\n");
 
         
-        requestAnimationFrame(() => {setColWidth(data.panel); fitText(data.panel)});
+        requestAnimationFrame(() => {fitText(data.panel)});
         
     } else {
         console.warn("Element with ID " + data.panel + " not found.");
@@ -115,7 +114,7 @@ function addAuthor(msgData) {
     else if (mode === "human" && !isBot) showAuthor = true;
 
     if (showAuthor && msgData.author) {
-        return `<div style="break-after: avoid; font-weight: bold;">${msgData.author}:</div>${text}`;
+        return `<div style="break-after: avoid; font-weight: bold; width: fit-content">${msgData.author}:</div>${text}`;
     }
     return text;
 }
@@ -125,10 +124,16 @@ function fitText(panelId) {
     const contentEl = document.getElementById(`${panelId}-content`);
     if (!el || !contentEl || !globalConfig.panels[panelId]) return;
 
-    const data = globalConfig.panels[panelId];
+    const settings = globalConfig.panels[panelId];
     const global = globalConfig.global_style;
-    const baseFontSize = data.font_size || global.font_size || 30;
+    const baseFontSize = settings.font_size || global.font_size || 30;
     const minFontSize = baseFontSize * 0.75;
+
+    contentEl.style.columnWidth = "auto";
+    contentEl.style.columnGap = "normal";
+    contentEl.style.width = "fit-content";
+    setColWidth(panelId)
+    
 
     let currentFontSize = baseFontSize;
     contentEl.style.fontSize = `${currentFontSize}px`;
@@ -148,26 +153,28 @@ function setColWidth(panelId){
     const settings = globalConfig.panels[panelId];
     if (!el || !contentEl || !globalConfig.panels[panelId]) return;
 
-    if (settings.column_width) {
+    if (!contentEl.innerHTML) return;
+
+    if (settings.column_width && (contentEl.scrollHeight >= el.offsetHeight || contentEl.scrollWidth >= settings.column_width)) {
+        // Pokud přetéká na výšku nebo defaultní šířku sloupce, aktivujeme sloupce
         const range = document.createRange();
         range.selectNodeContents(contentEl);
         const rects = range.getClientRects(); // Vrátí obdélníky pro každý řádek/kus
         
         let maxWidth = 0;
-        for (const rect of rects) {
+        for (let i = 1; i < rects.length; i++) {
+            const rect = rects[i];
             if (rect.width > maxWidth) maxWidth = rect.width;
         }
-        if (contentEl.scrollHeight <= el.offsetHeight) {
+        contentEl.style.width = "100%";
+        let colWidth = (settings.column_width > maxWidth) ? maxWidth : settings.column_width;
+        contentEl.style.columnWidth = `${colWidth}px`;
+        contentEl.style.columnGap = `${settings.column_spaceing || 20}px`;                    
+
+    } else {
             contentEl.style.width = "fit-content";
-            contentEl.style.setProperty('--col-width', 'auto');
-        } else {
-            // Pokud přetéká na výšku, aktivujeme sloupce
-            contentEl.style.width = "100%";
-            let colWidth = (settings.column_width > maxWidth) ? maxWidth : settings.column_width;
-            //contentEl.style.setProperty('--col-width', `${colWidth}px`);
-            contentEl.style.columnWidth = `${colWidth}px`;            
-            contentEl.style.webkitColumnWidth = `${colWidth}px`;
-        }
+            contentEl.style.columnWidth = "auto";
+            contentEl.style.columnGap = "normal";
     }
 }
 
@@ -204,18 +211,22 @@ function applyPanelStyle(id, settings) {
         img.style.opacity = opacity;
         img.style.objectPosition = settings.center_content ? "center" : "left top"; 
     } else {
-        if (settings.column_width) {
+        contentEl.style.columnWidth = "auto";
+        contentEl.style.columnGap = "normal";
+        contentEl.style.width = "fit-content";
+        setColWidth(id)
+        /* if (settings.column_width) {
             contentEl.style.columnWidth = "auto"; 
             contentEl.style.columnGap = `${settings.column_spaceing || 20}px`;
-            contentEl.style.webkitColumnGap = `${settings.column_spacing || 20}px`;
+            //contentEl.style.webkitColumnGap = `${settings.column_spacing || 20}px`;
             contentEl.style.width = "auto";
             
         } else {
             contentEl.style.columnWidth = "auto";
             contentEl.style.columnGap = "normal";
-            contentEl.style.webkitColumnGap = "normal";
+            //contentEl.style.webkitColumnGap = "normal";
             contentEl.style.width = "fit-content";
-        } 
+        }  */
         
         contentEl.style.backgroundColor = hexToRgba(bgColor, bgOpacity);
         el.style.backgroundColor = "transparent";

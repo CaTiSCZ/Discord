@@ -36,7 +36,7 @@ html, body {
     
     /* Sloupcový layout */
     column-fill: auto;
-    column-width: var(--col-width, auto);
+    column-width: auto;
     column-gap: 20px;
     
     /* Ošetření textu */
