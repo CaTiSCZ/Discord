@@ -133,6 +133,7 @@ function fitText(panelId) {
     contentEl.style.columnGap = "normal";
     contentEl.style.width = "fit-content";
     setColWidth(panelId)
+    setPanelWidth(panelId)
     
 
     let currentFontSize = baseFontSize;
@@ -176,6 +177,26 @@ function setColWidth(panelId){
             contentEl.style.columnWidth = "auto";
             contentEl.style.columnGap = "normal";
     }
+}
+
+function setPanelWidth(panelId){
+    const el = document.getElementById(panelId);
+    const contentEl = document.getElementById(`${panelId}-content`);
+
+    const range = document.createRange();
+    range.selectNodeContents(contentEl);
+    const rects = range.getClientRects();
+
+    let maxRight = 0;
+    let minLeft = Infinity;
+    for (let i = 1; i < rects.length; i++) {
+        const rect = rects[i];
+        if (rect.right > maxRight) maxRight = rect.right;
+        if (rect.left < minLeft) minLeft = rect.left;
+    }
+    
+    const actualTextWidth = maxRight + 20 - minLeft;
+    contentEl.style.width = `${actualTextWidth}px`;
 }
 
 function applyPanelStyle(id, settings) {
