@@ -207,7 +207,7 @@ class ChannelWatcher:
         self.channel_id = str(config.get("channel_id", "Unknown"))
         self.socket_panel = config.get("socket_panel", "panel-a")
         self.image_panel = config.get("image_panel", self.socket_panel)
-        self.file_path = config.get("file_path", "output.txt")
+        self.file_path = config.get("file_path", "temp/output")
         self.interval = config.get("interval", 10)
         self.type_output = config.get("type_output", "socket")
         self.manual_clear = config.get("manual_clear", True)
@@ -362,6 +362,7 @@ class ChannelWatcher:
                 clean = re.sub(r"<[^>]*>", "", clean)
                 clean = clean.replace("&nbsp;", " ")
                 lines_for_file.append(clean)
+        self.file_path = f"{self.file_path}-{self.comment}.txt"
         """Uloží zprávu do souboru"""
         try:
             with open(self.file_path, "w", encoding="utf-8") as f:

@@ -24,7 +24,7 @@ DEFAULT_WATCHER = {
     "enabled": True,
     "comment": "",
     "channel_id": "",
-    "file_path": "output.txt",
+    "file_path": "temp/output",
     "socket_panel": "panel-a",
     "image_panel": "panel-o",
     "interval": 10,
@@ -463,7 +463,7 @@ class ConfigGUI:
         ttk.Entry(row_id, textvariable=var_cid, width=20).pack(side="left", expand=True, padx=5)
         # File Path 
         ttk.Label(row_id, text="Output File:", width=10).pack(side="left", padx=(10,0))
-        var_path = tk.StringVar(value=watcher.get("file_path", "output.txt"))
+        var_path = tk.StringVar(value=watcher.get("file_path", "temp/output"))
         self.watcher_vars[idx]["file_path"] = var_path
         ttk.Entry(row_id, textvariable=var_path, width=20).pack(side="left", expand=True, padx=5)
         #GUI watcher
@@ -583,7 +583,7 @@ class ConfigGUI:
                     "enabled": get_bool("enabled", True),
                     "comment": get_str("comment", ""),
                     "channel_id": get_str("channel_id", ""),
-                    "file_path": get_str("file_path", "output.txt"),
+                    "file_path": get_str("file_path", "temp/output"),
                     "socket_panel": get_combo("socket_panel", "panel-a"),
                     "image_panel": get_combo("image_panel", "panel-o"),
                     "interval": get_int("interval", 10),
