@@ -134,6 +134,7 @@ class ConfigGUI:
         self.setup_UI()
         self.watcher_vars = [{} for _ in self.config.get("watchers", [])]
         self.gui_texts = {}
+        self.gui_watcher_frames = {}  # Mapování gui_id -> (LabelFrame, watcher_idx)
 
         # zavěsit handler pro kliknutí na křížek okna
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -312,9 +313,12 @@ class ConfigGUI:
         for w in self.gui_frame.winfo_children():
             w.destroy()
         self.gui_texts = {}
+        self.gui_watcher_frames = {}
         for gui_id, comment, watcher_idx in self.gui_watcher_list:
             frame = ttk.LabelFrame(self.gui_frame, text=f"{gui_id}: {comment}")
             frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=5, pady=5)
+            # Uložit referenci na frame a watcher_idx
+            self.gui_watcher_frames[gui_id] = (frame, watcher_idx)
             
             # Textové pole
             text = tk.Text(frame, height=10, width=30, wrap='word')
@@ -444,6 +448,8 @@ class ConfigGUI:
         comment_entery = tk.StringVar(value=watcher.get("comment", ""))
         self.watcher_vars[idx]["comment"] = comment_entery
         ttk.Entry(header_frame, textvariable=comment_entery, width=40).pack(side="left", padx=5)
+        # Zaregistruj callback pro aktualizaci GUI watcher label
+        comment_entery.trace("w", lambda name, index, mode, idx=idx: self.update_gui_watcher_header(idx))
 
         # Tlačítko smazat v hlavičce
         tk.Button(header_frame, text="Remove", fg="red", command=lambda: self.remove_watcher(idx)).pack(side="right")
@@ -655,6 +661,22 @@ class ConfigGUI:
             asyncio.run_coroutine_threadsafe(dispatcher.dispatch_clear(), self.loop)
         else:
             self.logger.warning("Bot not running, cannot dispatch clear.")
+
+    def update_gui_watcher_header(self, idx):
+        """Aktualizuje záhlaví GUI watcher textového pole když se změní comment."""
+        try:
+            # Najdi odpovídající gui_id pro tento watcher
+            for gui_id, comment, watcher_idx in self.gui_watcher_list:
+                if watcher_idx == idx:
+                    # Získej new comment z StringVar
+                    new_comment = self.watcher_vars[idx].get("comment", tk.StringVar()).get()
+                    # Aktualizuj text LabelFrame
+                    if gui_id in self.gui_watcher_frames:
+                        frame, _ = self.gui_watcher_frames[gui_id]
+                        frame.configure(text=f"{gui_id}: {new_comment}")
+                    break
+        except Exception as e:
+            self.logger.error(f"Error updating GUI watcher header: {e}")
 
     def update_gui_watcher(self, idx, var):
         self.config["watchers"][idx]["gui_watcher"] = var.get()
