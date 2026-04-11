@@ -15,9 +15,6 @@ logger = setup_logger("ChannelWatcher", level=logging.DEBUG)
 class MessageFormatter:
     def __init__(
         self, config):
-        self.max_rows_per_column = config.get("max_rows_per_column", 9)
-        self.max_column_width = config.get("max_column_width", 40)
-        self.column_spacing = config.get("column_spacing", 2)
         self.show_author_mode = config.get("show_author_mode", "both")
         self.header_text = config.get("header_text", "")
 
@@ -243,7 +240,7 @@ class ChannelWatcher:
             return
         if self.ignore_mode == "humans" and not message.author.bot:
             return
-        if message.content.startswith('!'):
+        if message.content.startswith('!') or message.content.startswith('..') or message.content.startswith('--'):
             return
         
         async with self._lock:
@@ -278,6 +275,8 @@ class ChannelWatcher:
                 if m["id"] == message.id:
                     if self.image_panel is not None:
                         self._remove_url(message)
+                        if not self.is_content:
+                            return
                     m["msg_obj"] = message
                     logger.debug(f"message {message.id} edited.")
                     await self._refresh_display()
@@ -298,12 +297,12 @@ class ChannelWatcher:
         await self.on_new_message(mock_msg)
 
     def _remove_url(self, message):
-        url_pattern = r'(https?://\S+\.(?:png|jpg|jpeg|gif|webp|bmp))'
-        found_urls = re.findall(url_pattern, message.content, re.IGNORECASE)
+        img_url_pattern = r'(https?://\S+\.(?:png|jpg|jpeg|gif|webp|bmp))'
+        found_urls = re.findall(img_url_pattern, message.content, re.IGNORECASE)
         
         if found_urls:
             logger.debug(f"Content s URL = {message.content}")
-            message.content = re.sub(url_pattern, '', message.content).strip()
+            message.content = re.sub(img_url_pattern, '', message.content).strip()
             logger.debug(f"Content bez URL = {message.content}")
             c = re.sub(" ", "", message.content).strip()
             if c == "":

@@ -236,18 +236,6 @@ function applyPanelStyle(id, settings) {
         contentEl.style.columnGap = "normal";
         contentEl.style.width = "fit-content";
         setColWidth(id)
-        /* if (settings.column_width) {
-            contentEl.style.columnWidth = "auto"; 
-            contentEl.style.columnGap = `${settings.column_spaceing || 20}px`;
-            //contentEl.style.webkitColumnGap = `${settings.column_spacing || 20}px`;
-            contentEl.style.width = "auto";
-            
-        } else {
-            contentEl.style.columnWidth = "auto";
-            contentEl.style.columnGap = "normal";
-            //contentEl.style.webkitColumnGap = "normal";
-            contentEl.style.width = "fit-content";
-        }  */
         
         contentEl.style.backgroundColor = hexToRgba(bgColor, bgOpacity);
         el.style.backgroundColor = "transparent";

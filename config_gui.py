@@ -32,10 +32,7 @@ DEFAULT_WATCHER = {
     "ignore_mode": None,
     "manual_clear": False,
     "type_output": "socket",
-    "max_rows_per_column": 9,
-    "max_column_width": 40,
     "header_text": "",
-    "column_spacing": 2,
     "gui_watcher": False,    
 }
 
@@ -475,17 +472,7 @@ class ConfigGUI:
         ttk.Label(row_limits, text="Interval (s):").pack(side="left")
         var_interval = tk.IntVar(value=watcher.get("interval", 10))
         self.watcher_vars[idx]["interval"] = var_interval
-        ttk.Spinbox(row_limits, from_=1, to=300, textvariable=var_interval, width=5).pack(side="left", padx=5)
-        # Rows per Column
-        ttk.Label(row_limits, text="Rows/Column:").pack(side="left", padx=(10,0))
-        var_rows = tk.IntVar(value=watcher.get("max_rows_per_column", 9))
-        self.watcher_vars[idx]["max_rows_per_column"] = var_rows
-        ttk.Spinbox(row_limits, from_=1, to=100, textvariable=var_rows, width=5).pack(side="left", padx=5)
-        # Column Width
-        ttk.Label(row_limits, text="Column Width:").pack(side="left", padx=(10,0))
-        var_colwidth = tk.IntVar(value=watcher.get("max_column_width", 40))
-        self.watcher_vars[idx]["max_column_width"] = var_colwidth
-        ttk.Spinbox(row_limits, from_=1, to=200, textvariable=var_colwidth, width=5).pack(side="left", padx=5)
+        ttk.Spinbox(row_limits, from_=1, to=300, textvariable=var_interval, width=5).pack(side="left", padx=5)        
         # Manual Clear
         var_clear = tk.BooleanVar(value=watcher.get("manual_clear", False))
         self.watcher_vars[idx]["manual_clear"] = var_clear
@@ -599,9 +586,6 @@ class ConfigGUI:
                     "manual_clear": get_bool("manual_clear", False),
                     "type_output": get_combo("type_output", "socket"),
                     "header_text": get_str("header_text", ""),
-                    "max_rows_per_column": get_int("max_rows_per_column", 9),
-                    "max_column_width": get_int("max_column_width", 40),
-                    "column_spacing": int(w.get("column_spacing", 2)),
                     "gui_watcher": get_bool("gui_watcher", False),
                 }
                 clean_watchers.append(clean)
