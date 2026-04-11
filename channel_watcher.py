@@ -20,6 +20,7 @@ class MessageFormatter:
 
     def format_messages(self, msgs):
         messages = []
+        extension_intervals = []
         for msg in msgs:
             
             if msg.author.name == "Avrae":
@@ -34,7 +35,10 @@ class MessageFormatter:
                 "is_bot": is_bot,
                 "show_author": self.show_author_mode 
             }) 
-        return messages
+            if len(content) > 10:
+                extension_intervals.append(len(content) * 0.5) # prodloužení o půl vteřiny na řádek přesahující 10 řádků
+
+        return messages, extension_intervals
     
     def _process_roll(self, msg):
         """Rozhodne, jestli jde o single/multi roll a zavolá parser."""
@@ -342,7 +346,10 @@ class ChannelWatcher:
         logger.debug(f"Watcher {self.channel_id}: refresh display with {len(self.active_messages)} active messages.")
         objs = [m["msg_obj"] for m in self.active_messages]
         
-        formatted_messages = self.formatter.format_messages(objs)
+        formatted_messages, extension_intervals = self.formatter.format_messages(objs)
+        
+        for m in self.active_messages:
+            m["expiry"] += extension_intervals.pop(0) if extension_intervals else 0
         
         if self.type_output in ("socket", "both"):    
             await self.sio.emit("new_message", {
