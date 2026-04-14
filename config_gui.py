@@ -764,26 +764,37 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
 
         # PRAVÁ STRANA - CONTROL
         self.right_frame = ttk.Frame(self.paned)
-        self.paned.add(self.right_frame, weight=1)
+        self.paned.add(self.right_frame, weight=2)
 
         # Tabulka vrstev
         ttk.Label(self.right_frame, text="Panels:").pack(anchor="w")
         tree_container = ttk.Frame(self.right_frame)
-        tree_container.pack(fill=tk.X, pady=5)
+        tree_container.pack(fill=tk.BOTH, expand=True, pady=5)
         num_panels = len(self.layout_cfg.get("panels", {}))
         tree_height = min(max(2, num_panels), 10)
-        self.tree = ttk.Treeview(tree_container, columns=("name", "z", "type"), show="headings", height=tree_height)
+        self.tree = ttk.Treeview(tree_container, columns=("name", "z", "type", "x", "y", "width", "height", "column", "auto_size"), show="headings", height=tree_height)
         self.tree.heading("name", text="Panel Name")
         self.tree.heading("z", text="Z")
         self.tree.heading("type", text="Type")
-        self.tree.column("name", width=40, anchor="center")
-        self.tree.column("z", width=20, anchor="center")
-        self.tree.column("type", width=40, anchor="center")
-        self.tree.pack(fill=tk.X, expand=False, pady=5)
+        self.tree.heading("x", text="X")
+        self.tree.heading("y", text="Y")
+        self.tree.heading("width", text="Width")
+        self.tree.heading("height", text="Height")
+        self.tree.heading("column", text="Col W")
+        self.tree.heading("auto_size", text="Auto-size")
+        self.tree.column("name", width=80, anchor="center")
+        self.tree.column("z", width=30, anchor="center")
+        self.tree.column("type", width=50, anchor="center")
+        self.tree.column("x", width=50, anchor="center")
+        self.tree.column("y", width=50, anchor="center")
+        self.tree.column("width", width=60, anchor="center")
+        self.tree.column("height", width=60, anchor="center")
+        self.tree.column("column", width=60, anchor="center")
+        self.tree.column("auto_size", width=80, anchor="center")
 
         scrollbar = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
-        self.tree.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.bind("<<TreeviewSelect>>", self.get_val_selected)
         self.tree.bind("<Double-1>", self.toggle_panel_type)
@@ -794,7 +805,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         ttk.Button(z_frame, text="▼ Move Down", command=lambda: self.set_val_change_z(-1)).pack(side=tk.LEFT, expand=True, fill=tk.X)
 
         prop_frame = ttk.LabelFrame(self.right_frame, text="Panel Geometry (px)", padding=10)
-        prop_frame.pack(fill=tk.X, pady=5)
+        prop_frame.pack(fill=tk.NONE, pady=5, anchor="center")
 
         self.vars = {
             "x": tk.IntVar(), "y": tk.IntVar(),
@@ -803,35 +814,36 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             "column_width": tk.IntVar()
         }
 
-        # Pomocná funkce pro vytvoření řádku se dvěma poli
-        def create_geo_row(parent, label1, var1, label2, var2):
-            row = ttk.Frame(parent)
-            row.pack(fill=tk.X, pady=2)
-            
-            ttk.Label(row, text=f"{label1}:", width=8).pack(side=tk.LEFT)
-            spin1 = ttk.Spinbox(row, width=8, from_=0, to=10000, textvariable=var1)
-            spin1.pack(side=tk.LEFT, padx=(0, 20))
-            
-            ttk.Label(row, text=f"{label2}:", width=8).pack(side=tk.LEFT)
-            spin2 = ttk.Spinbox(row, width=8, from_=0, to=10000, textvariable=var2)
-            spin2.pack(side=tk.LEFT)
-
-        # Využití tvých stávajících self.vars
-        create_geo_row(prop_frame, "X", self.vars['x'], "Width", self.vars['width'])
-        create_geo_row(prop_frame, "Y", self.vars['y'], "Height", self.vars['height'])
-        
-        # Samostatný řádek pro Z-Index (pokud ho v self.vars máš, což bys měla mít)
-        z_row = ttk.Frame(prop_frame)
-        z_row.pack(fill=tk.X, pady=2)
-        ttk.Label(z_row, text="Z-Index:", width=8).pack(side=tk.LEFT)
-        z_spin = ttk.Spinbox(z_row, textvariable=self.vars['z_index'], width=8, from_=-1000, to=1000)
+        # První řádek: X, Y, Z-Index
+        row1 = ttk.Frame(prop_frame)
+        row1.pack(fill=tk.X, pady=2)
+        ttk.Label(row1, text="X:", width=8).pack(side=tk.LEFT)
+        x_spin = ttk.Spinbox(row1, width=8, from_=0, to=10000, textvariable=self.vars['x'])
+        x_spin.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(row1, text="Y:", width=8).pack(side=tk.LEFT)
+        y_spin = ttk.Spinbox(row1, width=8, from_=0, to=10000, textvariable=self.vars['y'])
+        y_spin.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(row1, text="Z-Index:", width=10).pack(side=tk.LEFT)
+        z_spin = ttk.Spinbox(row1, textvariable=self.vars['z_index'], width=8, from_=-1000, to=1000)
         z_spin.pack(side=tk.LEFT)
-        ttk.Checkbutton(z_row, text="Auto-size (Content)", variable=self.vars['auto_size']).pack(side=tk.LEFT, padx=10)
-        row_column_width = ttk.Frame(prop_frame)
-        row_column_width.pack(fill=tk.X, pady=2)
-        ttk.Label(row_column_width, text="Column Width (px):", width=20).pack(side=tk.LEFT)
-        column_width_spin = ttk.Spinbox(row_column_width, textvariable=self.vars['column_width'], width=8, from_=0, to=1000)
+
+        # Druhý řádek: Width, Height, Column Width
+        row2 = ttk.Frame(prop_frame)
+        row2.pack(fill=tk.X, pady=2)
+        ttk.Label(row2, text="Width:", width=8).pack(side=tk.LEFT)
+        width_spin = ttk.Spinbox(row2, width=8, from_=0, to=10000, textvariable=self.vars['width'])
+        width_spin.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(row2, text="Height:", width=8).pack(side=tk.LEFT)
+        height_spin = ttk.Spinbox(row2, width=8, from_=0, to=10000, textvariable=self.vars['height'])
+        height_spin.pack(side=tk.LEFT, padx=(0, 10))
+        ttk.Label(row2, text="Col Width:", width=10).pack(side=tk.LEFT)
+        column_width_spin = ttk.Spinbox(row2, textvariable=self.vars['column_width'], width=8, from_=0, to=1000)
         column_width_spin.pack(side=tk.LEFT)
+
+        # Třetí řádek: Auto-size
+        row3 = ttk.Frame(prop_frame)
+        row3.pack(fill=tk.X, pady=2)
+        ttk.Checkbutton(row3, text="Auto-size (Content)", variable=self.vars['auto_size']).pack(side=tk.LEFT)
 
        
         for children in prop_frame.winfo_children():
@@ -873,7 +885,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         
         for p_id, info in sorted_panels:
             panel_type = "Image" if info.get("is_image", False) else "Text"
-            self.tree.insert("", tk.END, iid=p_id, values=(p_id, info.get("z_index", 0), panel_type))
+            self.tree.insert("", tk.END, iid=p_id, values=(p_id, info.get("z_index", 0), panel_type, info.get("x", 0), info.get("y", 0), info.get("width", 0), info.get("height", 0), info.get("column_width", 0), "Yes" if info.get("auto_size", False) else "No"))
             
         new_hight = min(max(2, len(panels)), 12)
         self.tree.configure(height=new_hight)
