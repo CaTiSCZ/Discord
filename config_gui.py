@@ -52,12 +52,12 @@ DEFAULT_LAYOUT = {
         "s_size": ""
     },
     "panels": {
-        "panel-a": {"x": 2, "y": 680, "width": 2000, "height": 350, "z_index": 5, "bold": False, "italic": False, "auto_size": True, "column_width": 650, "column_spacing": 10},
-        "panel-b": {"x": 2, "y": 1020, "width": 2556, "height": 410, "z_index": 5, "bold": False, "italic": False, "auto_size": True},
-        "panel-c": {"x": 1260, "y": 680, "width": 1300, "height": 350, "z_index": 5, "bold": False, "italic": False, "auto_size": True},
-        "panel-d": {"x": 2, "y": 2, "width": 2556, "height": 1434, "z_index": 10,  "bold": False, "italic": False, "auto_size": True},
-        "panel-e": {"x": 2, "y": 1300, "width": 2556, "height" :100,"z_index" :5,"font_size" :40, "bold" :False,"italic" :False, "auto_size" :False},
-        "panel-o":{"x" :2,"y" :2,"width" :2556,"height" :1434,"z_index" :0, "img_fit": "contain", "img_opacity": 1, "is_image": True, "auto_size" :False}
+        "panel-a": {"x": 2, "y": 680, "width": 2000, "height": 350, "z_index": 5, "bold": False, "italic": False, "column_width": 650, "column_spacing": 10},
+        "panel-b": {"x": 2, "y": 1020, "width": 2556, "height": 410, "z_index": 5, "bold": False, "italic": False},
+        "panel-c": {"x": 1260, "y": 680, "width": 1300, "height": 350, "z_index": 5, "bold": False, "italic": False},
+        "panel-d": {"x": 2, "y": 2, "width": 2556, "height": 1434, "z_index": 10,  "bold": False, "italic": False},
+        "panel-e": {"x": 2, "y": 1300, "width": 2556, "height" :100,"z_index" :5,"font_size" :40, "bold" :False,"italic" :False},
+        "panel-o":{"x" :2,"y" :2,"width" :2556,"height" :1434,"z_index" :0, "img_fit": "contain", "img_opacity": 1, "is_image": True}
     }
 }
 DEFAULT_TEXT_PANEL = {
@@ -68,7 +68,6 @@ DEFAULT_TEXT_PANEL = {
     "z_index": 5,
     "bold": False,
     "italic": False,
-    "auto_size": True,
     "column_width": 650
 }
 DEFAULT_IMG_PANEL = {
@@ -79,8 +78,7 @@ DEFAULT_IMG_PANEL = {
     "z_index": 0,
     "img_fit": "contain",
     "img_opacity": 1,
-    "is_image": True,
-    "auto_size": False
+    "is_image": True
 }
     
     
@@ -772,7 +770,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         tree_container.pack(fill=tk.BOTH, expand=True, pady=5)
         num_panels = len(self.layout_cfg.get("panels", {}))
         tree_height = min(max(2, num_panels), 10)
-        self.tree = ttk.Treeview(tree_container, columns=("name", "z", "type", "x", "y", "width", "height", "column", "auto_size"), show="headings", height=tree_height)
+        self.tree = ttk.Treeview(tree_container, columns=("name", "z", "type", "x", "y", "width", "height", "column"), show="headings", height=tree_height)
         self.tree.heading("name", text="Panel Name")
         self.tree.heading("z", text="Z")
         self.tree.heading("type", text="Type")
@@ -781,7 +779,6 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         self.tree.heading("width", text="Width")
         self.tree.heading("height", text="Height")
         self.tree.heading("column", text="Col W")
-        self.tree.heading("auto_size", text="Auto-size")
         self.tree.column("name", width=80, anchor="center")
         self.tree.column("z", width=30, anchor="center")
         self.tree.column("type", width=50, anchor="center")
@@ -790,7 +787,6 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         self.tree.column("width", width=60, anchor="center")
         self.tree.column("height", width=60, anchor="center")
         self.tree.column("column", width=60, anchor="center")
-        self.tree.column("auto_size", width=80, anchor="center")
 
         scrollbar = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -810,7 +806,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         self.vars = {
             "x": tk.IntVar(), "y": tk.IntVar(),
             "width": tk.IntVar(), "height": tk.IntVar(),
-            "z_index" : tk.IntVar(), "auto_size": tk.BooleanVar(value=True),
+            "z_index" : tk.IntVar(),
             "column_width": tk.IntVar()
         }
 
@@ -841,10 +837,6 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         column_width_spin.pack(side=tk.LEFT)
 
         # Třetí řádek: Auto-size
-        row3 = ttk.Frame(prop_frame)
-        row3.pack(fill=tk.X, pady=2)
-        ttk.Checkbutton(row3, text="Auto-size (Content)", variable=self.vars['auto_size']).pack(side=tk.LEFT)
-
        
         for children in prop_frame.winfo_children():
             for child in children.winfo_children():
@@ -885,7 +877,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         
         for p_id, info in sorted_panels:
             panel_type = "Image" if info.get("is_image", False) else "Text"
-            self.tree.insert("", tk.END, iid=p_id, values=(p_id, info.get("z_index", 0), panel_type, info.get("x", 0), info.get("y", 0), info.get("width", 0), info.get("height", 0), info.get("column_width", 0), "Yes" if info.get("auto_size", False) else "No"))
+            self.tree.insert("", tk.END, iid=p_id, values=(p_id, info.get("z_index", 0), panel_type, info.get("x", 0), info.get("y", 0), info.get("width", 0), info.get("height", 0), info.get("column_width", 0)))
             
         new_hight = min(max(2, len(panels)), 12)
         self.tree.configure(height=new_hight)
@@ -916,9 +908,8 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         for p_id in sorted_keys:
             p_info = panels[p_id]
             is_active = (p_id == self.active_panel_id)
-            is_auto = p_info.get("auto_size", False)
             text_color = p_info.get("text_color", "#FFFFFF")
-            center_content = p_info.get("center_content", False)
+            alignment = p_info.get("alignment", "left")
             is_image_panel = p_info.get("is_image", False)
             
             x, y = p_info["x"] * self.scale, p_info["y"] * self.scale
@@ -926,13 +917,11 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             h = int(p_info.get("height", 100) * self.scale) 
 
             outline_color = "white" if is_active else ("#7AD896" if is_image_panel else "#A8A8A8")
-            dash_style = (5, 2) if is_auto else None
 
             if is_active:
-                overlay_auto = Image.new('RGBA', (max(1, w), max(1, h)), (0, 120, 215, 150))
                 overlay = Image.new('RGBA', (max(1, w), max(1, h)), (0, 120, 215, 230))
                 overlay_image_panel = Image.new('RGBA', (max(1, w), max(1, h)), (83, 136, 99, 230))
-                self.active_overlay_img = ImageTk.PhotoImage(overlay_auto) if is_auto else ImageTk.PhotoImage(overlay_image_panel if is_image_panel else overlay)
+                self.active_overlay_img = ImageTk.PhotoImage(overlay_image_panel if is_image_panel else overlay)
                 self.canvas.create_image(x, y, image=self.active_overlay_img, anchor="nw", tags=("panel", p_id))
 
                 cw_val = p_info.get("column_width", 0)
@@ -940,11 +929,14 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
                     cw_scaled = int(cw_val * self.scale)
                     self.canvas.create_rectangle(x, y, x+cw_scaled, y+h, outline="#FFD700",width=1, dash=(2,2), tags=("panel", p_id, "column_width"))           
         
-            self.canvas.create_rectangle(x, y, x+w, y+h, fill= "", outline=outline_color, width=2 if is_active else 1, tags=("panel", p_id), dash=dash_style)
-            if center_content:
+            self.canvas.create_rectangle(x, y, x+w, y+h, fill= "", outline=outline_color, width=2 if is_active else 1, tags=("panel", p_id))
+            if alignment == "center":
                 text_anchor = "center"
                 text_x, text_y = x + w/2, y + h/2
-            else:
+            elif alignment == "right":
+                text_anchor = "ne"
+                text_x, text_y = x + w - 5, y + 5
+            else: # left / justify
                 text_anchor = "nw"
                 text_x, text_y = x + 5, y + 5
 
@@ -953,7 +945,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
 
             if not text_color:
                 text_color =  global_style.get("text_color", "#FFFFFF") 
-            label_text = f"{p_id} [AUTO]" if is_auto else (f"{p_id} [IMAGE]" if is_image_panel else p_id)
+            label_text = f"{p_id} [IMAGE]" if is_image_panel else p_id
             self.canvas.create_text(text_x, text_y, text=label_text, anchor=text_anchor, fill=text_color, tags=("panel", p_id))
         
         self.canvas.tag_lower("bg_img")
@@ -984,7 +976,6 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             self.vars["width"].set(p.get("width", 200)) # Default 200
             self.vars["height"].set(p.get("height", 100)) # Default 100
             self.vars["z_index"].set(p.get("z_index", 0))
-            self.vars["auto_size"].set(p.get("auto_size", False))
             cw = p.get("column_width", 0) 
             self.vars["column_width"].set(cw if cw is not None else 0)
         self.draw_panels()
@@ -1012,7 +1003,6 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
                 p["width"] = self.vars["width"].get()
                 p["height"] = self.vars["height"].get()
                 p["z_index"] = self.vars["z_index"].get()
-                p["auto_size"] = self.vars["auto_size"].get()
                 try:
                     cw = self.vars["column_width"].get()
                     if cw > 0:
@@ -1106,248 +1096,191 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         self.withdraw()
         self.setup_focus_management()
         self.title("Font & Style Editor")
-        
-        # Geometrii nenastavujeme fixně, necháme ji dýchat
         self.transient(parent)
-        
+        self.main_app = parent.main_app  # Assuming parent has main_app
+
         self.layout_cfg = layout_cfg
         self.on_save_callback = on_save_callback
         self.on_update_callback = on_update_callback
-        self.cached_fonts, self.max_font_width = self.get_system_fonts()
+        self.cached_fonts = self.get_system_fonts()[0]
 
-        # Kontejner
         self.main_container = ttk.Frame(self)
         self.main_container.pack(fill=tk.BOTH, expand=True)
+        self.main_container.pack_propagate(False)
 
-        # Spodní lišta s tlačítkem (vytvořena dřív, aby byla "přibitá" dolů)
+        # Bottom bar
         self.bottom_bar = ttk.Frame(self)
         self.bottom_bar.pack(fill=tk.X, side=tk.BOTTOM, padx=10, pady=10)
-
-
         self.apply_and_close_btn = ttk.Button(self.bottom_bar, text="Apply & Close", command=self.apply_and_close)
         self.apply_and_close_btn.pack(side=tk.RIGHT)
         self.apply_btn = ttk.Button(self.bottom_bar, text="Apply", command=self.apply)
         self.apply_btn.pack(side=tk.RIGHT)
-        ttk.Label(self.bottom_bar, text="💡 Changes saved by leave edit file or enter key. Zero in text size is ignored.").pack(side=tk.LEFT)
+        ttk.Label(self.bottom_bar, text="💡 Changes are applied immediately. Use Apply to send to OBS.").pack(side=tk.LEFT)
 
-        # Scrollable Canvas
+        # Scrollable area
         self.canvas_frame = ttk.Frame(self.main_container)
         self.canvas_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-
+        self.canvas_frame.pack_propagate(False)
         self.canvas = tk.Canvas(self.canvas_frame, highlightthickness=0)
         self.scrollbar = ttk.Scrollbar(self.canvas_frame, orient="vertical", command=self.canvas.yview)
         self.scroll_content = ttk.Frame(self.canvas)
-
-        self.scroll_content.bind(
-            "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
-        )
-
+        self.scroll_content.bind("<Configure>", lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all")))
         self.canvas.create_window((0, 0), window=self.scroll_content, anchor="nw")
         self.canvas.configure(yscrollcommand=self.scrollbar.set)
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         self.scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
-        self.bind_all("<MouseWheel>", self._on_mousewheel)
         self.setup_table()
 
-    def _on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        # Adjust window size to fit all content without scrolling
+        self.update_idletasks()
+        content_width = self.scroll_content.winfo_reqwidth() + 60  # padding for borders
+        content_height = self.scroll_content.winfo_reqheight() + 160  # bottom bar + padding
+        self.geometry(f"{content_width}x{content_height}")
+        self.minsize(500, 300)  # reasonable minimum
+
+        self.bind_all("<MouseWheel>", self._on_mousewheel)
+
+    def update_display(self):
+        self.on_update_callback()
+        self.refresh_table()
 
     def setup_table(self):
         panels = self.layout_cfg.get("panels", {})
         text_panels = ["global"] + [pid for pid, info in panels.items() if not info.get("is_image", False)]
         image_panels = [pid for pid, info in panels.items() if info.get("is_image", False)]
-        headers_text = ["ID", "Font Family", "Size", "Center", "Bg color", "Text Color", "<b> Color", "<b> Size", "<i> Color", "<i> Size", "<u> Color", "<u> Size", "<s> Color", "<s> Size"]
-        headers_image = ["ID", "Bg color","Center", "Img Fit", "Opacity"]
-        mapping_text = [
-                ("font_family", "font_combo"), ("font_size", "number"), 
-                ("center_content", "bool"),
-                ("bg_color", "bg_color"),
-                ("text_color", "color"),
-                ("b_color", "color"), ("b_size", "number"),
-                ("i_color", "color"), ("i_size", "number"), 
-                ("u_color", "color"), ("u_size", "number"), 
-                ("s_color", "color"), ("s_size", "number")
-            ]
-        mapping_image = [
-                ("bg_color", "bg_color"), ("center_content", "bool"), ("img_fit", "combo_fit"), ("img_opacity", "float"),
-            ]
 
-        #row_ids = ["global"] + list(self.layout_cfg.get("panels", {}).keys())
+        headers_text = ["ID", "Font", "Size", "Color", "Background", "Text Alignment"]
+        headers_image = ["ID", "Alignment", "Img Fit", "Opacity", "Background"]
+
+        mapping_text = [
+            ("font_family", "font"),
+            ("font_size", "number"),
+            ("text_color", "color"),
+            ("bg_color", "bg_color"),
+            ("alignment", "combo")
+        ]
+        mapping_image = [
+            ("img_alignment", "combo"),  # alignment
+            ("img_fit", "combo"),
+            ("img_opacity", "float"),
+            ("bg_color", "bg_color")
+        ]
+
+        def create_preview_label(parent, val, field_type):
+            if field_type == "color" or field_type == "bg_color":
+                if val:
+                    lbl = tk.Label(parent, text=val, bg=val, fg="white" if self.is_dark_color(val) else "black", width=10, relief="solid", borderwidth=1)
+                else:
+                    lbl = tk.Label(parent, text="", width=10)
+            elif field_type == "font":
+                if val:
+                    lbl = tk.Label(parent, text=val, font=(val, 10), width=15)
+                else:
+                    lbl = tk.Label(parent, text="", width=15)
+            elif field_type == "number":
+                lbl = tk.Label(parent, text=str(val) if val is not None else "", width=8)
+            elif field_type == "bool":
+                lbl = tk.Label(parent, text="Yes" if val else "No" if val is not None else "", width=8)
+            elif field_type == "combo":
+                lbl = tk.Label(parent, text=str(val) if val else "", width=10)
+            elif field_type == "float":
+                lbl = tk.Label(parent, text=str(val) if val is not None else "", width=8)
+            else:
+                lbl = tk.Label(parent, text=str(val) if val else "", width=10)
+            return lbl
 
         def draw_section(parent, title, row_ids, mapping, headers):
             frame = ttk.LabelFrame(parent, text=title, padding=10)
             frame.pack(fill=tk.X, pady=(10,0), padx=5)
 
             for col, text in enumerate(headers):
-                lbl = tk.Label(frame, text=text, font=("Arial", 9, "bold"), 
-                            padx=10, pady=5, relief="flat", bg="#e1e1e1")
+                lbl = tk.Label(frame, text=text, font=("Arial", 9, "bold"), padx=10, pady=5, relief="flat", bg="#e1e1e1")
                 lbl.grid(row=0, column=col, sticky="nsew", padx=1, pady=1)
 
             for r_idx, rid in enumerate(row_ids, start=1):
-                tk.Label(frame, text=rid.upper(), padx=10, font=("Arial", 9, "bold")).grid(row=r_idx, column=0, sticky="w")
-                is_auto = False
-                if rid != "global":
-                    is_auto = self.layout_cfg.get("panels", {}).get(rid, {}).get("auto_size", False)
+                id_label = tk.Label(frame, text=rid.upper(), padx=10, font=("Arial", 9, "bold"))
+                id_label.grid(row=r_idx, column=0, sticky="w")
+                id_label.bind("<Button-3>", lambda e, r=rid: self.show_context_menu(e, r))
 
                 for c_idx, (key, field_type) in enumerate(mapping, start=1):
                     val = self.get_val(rid, key)
-                    if field_type == "text":
-                        ent = ttk.Entry(frame, width=8)
-                        ent.insert(0, str(val))
-                        ent.grid(row=r_idx, column=c_idx, padx=3, pady=3, )
-                        ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=ent: self.set_val(r, k, w.get()))
-                    
-                    elif field_type == "float":
-                        spin = ttk.Spinbox(frame, width=8, from_=0.00, to=1.00, increment=0.01)
-                        try:
-                            spin.set(float(val) if val is not None else 1.00)
-                        except ValueError:
-                            spin.set(1.00)
-                        spin.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                        spin.bind("<FocusOut>", lambda e, r=rid, k=key, w=spin: self.set_val(r, k, w.get()))
-                        spin.bind("<Return>", lambda e, r=rid, k=key, s=spin: self.set_val(r, k, s.get()))
+                    lbl = create_preview_label(frame, val, field_type)
+                    lbl.grid(row=r_idx, column=c_idx, padx=3, pady=3)
 
-                    elif field_type == "number":
-                        spin = ttk.Spinbox(frame, width=8, from_=0, to=10000)
-                        spin.set(val if val is not None else 0)
-                        spin.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                        spin.bind("<FocusOut>", lambda e, r=rid, k=key, w=spin: self.set_val(r, k, w.get()))
-                        spin.bind("<Return>", lambda e, r=rid, k=key, s=spin: self.set_val(r, k, s.get()))
-
-                    elif field_type == "bool":
-                        # Checkbox pro centrování
-                        var = tk.BooleanVar(value=True if str(val).lower() == "true" else False)
-                        cb = ttk.Checkbutton(frame, variable=var, 
-                                            command=lambda r=rid, k=key, v=var: self.set_val(r, k, v.get()))
-                        cb.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                        
-                        # Logika: Pokud je to auto-size panel, centrování zakážeme
-                        if is_auto or rid == "global":
-                            cb.state(['disabled'])
-                            self.set_val(rid, key, False) # Vynutit vypnutí v datech
-
-                    elif field_type == "combo_fit":
-                        #var = tk.StringVar(str(value=val) if val else "")
-                        combo = ttk.Combobox(frame, values=["", "cover", "contain", "fill"], width=8, state="readonly")
-                        combo.set(str(val) if str(val) else "")
-                        combo.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                        combo.bind("<<ComboboxSelected>>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get()))
-                        if rid == "global":
-                            combo.state(['disabled'])
-                            self.set_val(rid, key, "") # Vynutit "" pro global
-
-                    elif field_type == "font_combo":
-                        fonts = self.cached_fonts
-                        s = ttk.Style()
-                        s.configure("Wide.TCombobox", postoffset=(0, 0, self.max_font_width, 0))
-                        combo = ttk.Combobox(frame, values=fonts, width=15, style="Wide.TCombobox", state="readonly")
-                        current_val = str(val)
-                        found_match = [f for f in fonts if f.startswith(current_val)]
-                        combo.set(found_match[0] if found_match else current_val)
-                        combo.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                        combo.bind("<<ComboboxSelected>>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get().split(" [")[0]))
-                        #combo.bind("<FocusOut>", lambda e, r=rid, k=key, c=combo: self.set_val(r, k, c.get().split(" [")[0]))
-                    
-
-                    elif field_type in ["color", "bg_color"]:
-                        cell = ttk.Frame(frame)
-                        cell.grid(row=r_idx, column=c_idx, padx=3, pady=3)
-                        c_ent = ttk.Entry(cell, width=8)
-                        c_ent.insert(0, str(val))
-                        c_ent.grid(row=0, column=0)
-                        btn = tk.Button(cell, bg=val if str(val).startswith("#") else "white", 
-                                    width=2, height=1, relief="flat", command=lambda r=rid, k=key, e=c_ent: self.pick_color(r, k, e))
-                        btn.grid(row=0, column=1, padx=2)
-                        if field_type == "bg_color":
-                            op_key = key + "_opacity"
-                            op_val = self.get_val(rid, op_key)
-
-                            try:
-                                op_val = float(op_val) if op_val not in [None, ""] else 1.0
-                            except:
-                                op_val = 1.0
-                            row_var = tk.DoubleVar(value=op_val)
-
-                            scale = tk.Scale(cell, from_=0, to=1, resolution=0.01, orient=tk.HORIZONTAL,
-                                            showvalue=True, length=60, font=("Arial", 7),
-                                            highlightthickness=0, troughcolor="#cccccc", sliderrelief="flat",
-                                            variable=row_var,
-                                            command=lambda v, r=rid, k=op_key: self.set_val(r, k, v))
-                            scale.set(op_val)
-                            scale.grid(row=1, column=0, columnspan=2, sticky="we")
-                        c_ent.bind("<FocusOut>", lambda e, r=rid, k=key, w=c_ent, p=btn: self.update_from_entry(r, k, w, p))
-                        c_ent.bind("<Return>", lambda e, r=rid, k=key, w=c_ent, p=btn: self.update_from_entry(r, k, w, p))
-                    #pass
-        if text_panels:
-            draw_section(self.scroll_content, "Text Panels", text_panels, mapping_text, headers_text)
+        draw_section(self.scroll_content, "Text Panels", text_panels, mapping_text, headers_text)
         if image_panels:
             draw_section(self.scroll_content, "Image Panels", image_panels, mapping_image, headers_image)
 
-        # FINÁLNÍ KROK: Přizpůsobení okna
-        self.scroll_content.update_idletasks()
-        w = self.scroll_content.winfo_reqwidth() + 50
-        h = self.scroll_content.winfo_reqheight() + 100
-        # Omezíme maximální velikost na 90% obrazovky, aby okno nezmizelo
-        max_h = int(self.winfo_screenheight() * 0.8)
-        self.canvas.configure(width=w, height=min(h-100, max_h))
+    def is_dark_color(self, hex_color):
+        # Simple check if color is dark
+        if not hex_color.startswith('#'):
+            return False
+        r = int(hex_color[1:3], 16)
+        g = int(hex_color[3:5], 16)
+        b = int(hex_color[5:7], 16)
+        return (r + g + b) / 3 < 128
+
+    def show_context_menu(self, event, panel_id):
+        menu = tk.Menu(None, tearoff=0)
+        is_image = panel_id != "global" and self.layout_cfg.get("panels", {}).get(panel_id, {}).get("is_image", False)
+        is_global = panel_id == "global"
+        
+        if not is_image or is_global:
+            menu.add_command(label="Text Style", command=lambda: self.open_text_style(panel_id))
+            menu.add_command(label="Tags", command=lambda: self.open_tags(panel_id))
+        if is_image or is_global:
+            menu.add_command(label="Image Style", command=lambda: self.open_image_style(panel_id))
+        menu.add_command(label="Panel Style", command=lambda: self.open_panel_style(panel_id))
+        if not is_global:
+            menu.add_separator()
+            menu.add_command(label="Clear All", command=lambda: self.clear_all(panel_id))
+
+        menu.post(event.x_root, event.y_root)
+
+    def open_text_style(self, panel_id):
+        TextStyleWindow(self, self.layout_cfg, panel_id, self.update_display, self.cached_fonts)
+
+    def open_panel_style(self, panel_id):
+        PanelStyleWindow(self, self.layout_cfg, panel_id, self.update_display)
+
+    def open_tags(self, panel_id):
+        TagsWindow(self, self.layout_cfg, panel_id, self.update_display)
+
+    def open_image_style(self, panel_id):
+        ImageStyleWindow(self, self.layout_cfg, panel_id, self.update_display)
+
+    def clear_all(self, panel_id):
+        if panel_id == "global":
+            return
+        else:
+            panel = self.layout_cfg.get("panels", {}).get(panel_id, {})
+            # Keep basic keys: x, y, width, height, z_index, column_width, is_image
+            keys_to_keep = {"x", "y", "width", "height", "z_index", "column_width", "is_image"}
+            self.layout_cfg["panels"][panel_id] = {k: v for k, v in panel.items() if k in keys_to_keep}
+        self.update_display()
+
+    def refresh_table(self):
+        # Destroy and recreate table
+        for widget in self.scroll_content.winfo_children():
+            widget.destroy()
+        self.setup_table()
 
     def get_val(self, rid, key):
-        if rid == "global": return self.layout_cfg.get("global_style", {}).get(key, "")
-        return self.layout_cfg.get("panels", {}).get(rid, {}).get(key, "")
-
-    def set_val(self, rid, key, val):
-        ignore_values = ["", None]
-        if isinstance(val, bool):
-            clean_val = val
-        else:
-            clean_val = str(val).strip()
-
-        if not isinstance(clean_val, bool) and clean_val not in ignore_values:
-            try:
-                #isdigit() nebere záporná čísla, proto tato kontrola:
-                if clean_val.lstrip('-').isdigit():
-                    clean_val = int(clean_val)
-            except ValueError:
-                pass
-        if not key.endswith("_opacity"):
-            ignore_values.extend([0, "0"])
-
         if rid == "global":
-            if "global_style" not in self.layout_cfg: 
-                self.layout_cfg["global_style"] = {}
-            self.layout_cfg["global_style"][key] = clean_val
+            return self.layout_cfg.get("global_style", {}).get(key)
         else:
-            if rid in self.layout_cfg.get("panels", {}):
-                if key.endswith("_opacity"):
-                    color_key = "bg_color" 
-                    if color_key in self.layout_cfg["panels"][rid] and clean_val != "":
-                        self.layout_cfg["panels"][rid][key] = clean_val
-                    elif key in self.layout_cfg["panels"][rid]:
-                        del self.layout_cfg["panels"][rid][key]
-                if clean_val in ignore_values or (isinstance(clean_val, bool) and clean_val is False):
-                    # Pokud je hodnota prázdná, smažeme klíč z panelu
-                    if key in self.layout_cfg["panels"][rid]:
-                        del self.layout_cfg["panels"][rid][key]
-                else:
-                    # Jinak hodnotu normálně uložíme
-                    self.layout_cfg["panels"][rid][key] = clean_val
+            return self.layout_cfg.get("panels", {}).get(rid, {}).get(key)
 
-    def pick_color(self, rid, key, entry_widget):
-        current = entry_widget.get()
-        color = colorchooser.askcolor(initialcolor=current if current.startswith("#") else "#ffffff")[1]
-        if color:
-            entry_widget.delete(0, tk.END)
-            entry_widget.insert(0, color)
-            self.set_val(rid, key, color)
-            for child in entry_widget.master.winfo_children():
-                if isinstance(child, tk.Button): child.configure(bg=color)
+    def apply(self):
+        self.on_save_callback()
 
-    def update_from_entry(self, rid, key, entry_widget, preview_widget):
-        val = entry_widget.get()
-        self.set_val(rid, key, val)
-        if val.startswith("#") and len(val) == 7: preview_widget.configure(bg=val)
+    def apply_and_close(self):
+        self.apply()
+        self.destroy()
+
+    def _on_mousewheel(self, event):
+        self.canvas.yview_scroll(int(-1*(event.delta/120)), "units")
 
     def get_system_fonts(self):
         """Vrátí seznam fontů s označením, zda jsou neproporcionální."""
@@ -1368,15 +1301,376 @@ class StyleEditorWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             max_width = max(max_width, measure_font.measure(full_name))
             
         return font_list, max_width
+                    
+
+class TextStyleWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
+    def __init__(self, parent, layout_cfg, panel_id, on_update_callback, cached_fonts):
+        super().__init__(parent)
+        self.withdraw()
+        self.setup_focus_management()
+        self.title(f"Text Style - {panel_id}")
+        self.transient(parent)
+
+        self.layout_cfg = layout_cfg
+        self.panel_id = panel_id
+        self.on_update_callback = on_update_callback
+        self.cached_fonts = cached_fonts
+
+        self.main_frame = ttk.Frame(self, padding=10)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Font
+        ttk.Label(self.main_frame, text="Font:").grid(row=0, column=0, sticky="w")
+        self.font_combo = ttk.Combobox(self.main_frame, values=self.cached_fonts, state="readonly")
+        self.font_combo.grid(row=0, column=1, sticky="ew")
+        self.font_combo.set(self.get_val("font_family") or "")
+
+        # Size
+        ttk.Label(self.main_frame, text="Size:").grid(row=1, column=0, sticky="w")
+        self.size_entry = ttk.Entry(self.main_frame)
+        self.size_entry.grid(row=1, column=1, sticky="ew")
+        self.size_entry.insert(0, self.get_val("font_size") or "")
+
+        # Color
+        ttk.Label(self.main_frame, text="Color:").grid(row=2, column=0, sticky="w")
+        self.color_entry = ttk.Entry(self.main_frame)
+        self.color_entry.grid(row=2, column=1, sticky="ew")
+        self.color_entry.insert(0, self.get_val("text_color") or "")
+        self.color_btn = tk.Button(self.main_frame, text="Pick", command=self.pick_color)
+        self.color_btn.grid(row=2, column=2)
+
+        # Alignment
+        ttk.Label(self.main_frame, text="Alignment:").grid(row=3, column=0, sticky="w")
+        self.align_combo = ttk.Combobox(self.main_frame, values=["left", "center", "right", "justify"], state="readonly")
+        self.align_combo.grid(row=3, column=1, sticky="ew")
+        self.align_combo.set(self.get_val("alignment") or "")
+        # Assuming alignment is stored as center_content or something, but for now placeholder
+
+        # Shadow
+        ttk.Label(self.main_frame, text="Shadow:").grid(row=4, column=0, sticky="w")
+        self.shadow_entry = ttk.Entry(self.main_frame)
+        self.shadow_entry.grid(row=4, column=1, sticky="ew")
+        self.shadow_entry.insert(0, self.get_val("shadow") or "")
+
+        # Line height
+        ttk.Label(self.main_frame, text="Line Height:").grid(row=5, column=0, sticky="w")
+        self.line_height_entry = ttk.Entry(self.main_frame)
+        self.line_height_entry.grid(row=5, column=1, sticky="ew")
+        self.line_height_entry.insert(0, self.get_val("line_height") or "")
+
+        # Buttons
+        btn_frame = ttk.Frame(self.main_frame)
+        btn_frame.grid(row=6, column=0, columnspan=3, pady=10)
+        ttk.Button(btn_frame, text="OK", command=self.apply).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT)
+
+        self.main_frame.columnconfigure(1, weight=1)
+
+        self.deiconify()
+
+    def get_val(self, key):
+        if self.panel_id == "global":
+            return self.layout_cfg.get("global_style", {}).get(key, "")
+        return self.layout_cfg.get("panels", {}).get(self.panel_id, {}).get(key, "")
+
+    def set_val(self, key, val):
+        if val is None or val == "":
+            if self.panel_id == "global":
+                self.layout_cfg.get("global_style", {}).pop(key, None)
+            else:
+                self.layout_cfg.get("panels", {}).get(self.panel_id, {}).pop(key, None)
+        else:
+            if self.panel_id == "global":
+                self.layout_cfg.setdefault("global_style", {})[key] = val
+            else:
+                self.layout_cfg.setdefault("panels", {}).setdefault(self.panel_id, {})[key] = val
+
+    def pick_color(self):
+        initial = self.color_entry.get() if self.color_entry.get() else None
+        color = colorchooser.askcolor(title="Choose color", initialcolor=initial)
+        if color[1]:
+            self.color_entry.delete(0, tk.END)
+            self.color_entry.insert(0, color[1])
 
     def apply(self):
-        self.on_save_callback()
-        self.on_update_callback()    
-    
-    def apply_and_close(self):
-        self.on_save_callback()
+        self.set_val("font_family", self.font_combo.get())
+        size = self.size_entry.get()
+        if size:
+            try:
+                self.set_val("font_size", int(size))
+            except ValueError:
+                pass
+        else:
+            self.set_val("font_size", None)
+        text_color = self.color_entry.get()
+        if text_color:
+            self.set_val("text_color", text_color)
+        else:
+            self.set_val("text_color", None)
+        self.set_val("alignment", self.align_combo.get())  # Placeholder
+        self.set_val("shadow", self.shadow_entry.get())
+        line_height = self.line_height_entry.get()
+        if line_height:
+            try:
+                self.set_val("line_height", float(line_height))
+            except ValueError:
+                pass  # Ignore invalid float
+        else:
+            self.set_val("line_height", None)
         self.on_update_callback()
         self.destroy()
+
+
+class PanelStyleWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
+    def __init__(self, parent, layout_cfg, panel_id, on_update_callback):
+        super().__init__(parent)
+        self.withdraw()
+        self.setup_focus_management()
+        self.title(f"Panel Style - {panel_id}")
+        self.transient(parent)
+
+        self.layout_cfg = layout_cfg
+        self.panel_id = panel_id
+        self.on_update_callback = on_update_callback
+
+        self.main_frame = ttk.Frame(self, padding=10)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Background color
+        ttk.Label(self.main_frame, text="Background Color:").grid(row=0, column=0, sticky="w")
+        self.bg_color_entry = ttk.Entry(self.main_frame)
+        self.bg_color_entry.grid(row=0, column=1, sticky="ew")
+        self.bg_color_entry.insert(0, self.get_val("bg_color") or "")
+        self.bg_color_btn = tk.Button(self.main_frame, text="Pick", command=lambda: self.pick_color(self.bg_color_entry))
+        self.bg_color_btn.grid(row=0, column=2)
+
+        # Opacity
+        ttk.Label(self.main_frame, text="Opacity:").grid(row=1, column=0, sticky="w")
+        self.opacity_var = tk.DoubleVar(value=self.get_val("bg_opacity") or 1.0)
+        self.opacity_scale = tk.Scale(self.main_frame, from_=0.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL, variable=self.opacity_var)
+        self.opacity_scale.grid(row=1, column=1, sticky="ew")
+
+        # Frame color
+        ttk.Label(self.main_frame, text="Frame Color:").grid(row=2, column=0, sticky="w")
+        self.frame_color_entry = ttk.Entry(self.main_frame)
+        self.frame_color_entry.grid(row=2, column=1, sticky="ew")
+        self.frame_color_entry.insert(0, self.get_val("frame_color") or "")
+        self.frame_color_btn = tk.Button(self.main_frame, text="Pick", command=lambda: self.pick_color(self.frame_color_entry))
+        self.frame_color_btn.grid(row=2, column=2)
+
+        # Frame opacity
+        ttk.Label(self.main_frame, text="Frame Opacity:").grid(row=3, column=0, sticky="w")
+        self.frame_opacity_var = tk.DoubleVar(value=self.get_val("frame_opacity") or 1.0)
+        self.frame_opacity_scale = tk.Scale(self.main_frame, from_=0.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL, variable=self.frame_opacity_var)
+        self.frame_opacity_scale.grid(row=3, column=1, sticky="ew")
+
+        # Thickness
+        ttk.Label(self.main_frame, text="Thickness:").grid(row=4, column=0, sticky="w")
+        self.thickness_spin = ttk.Spinbox(self.main_frame, from_=0, to=10)
+        self.thickness_spin.grid(row=4, column=1, sticky="ew")
+        self.thickness_spin.set(self.get_val("frame_thickness") or 0)
+
+        # Style
+        ttk.Label(self.main_frame, text="Style:").grid(row=5, column=0, sticky="w")
+        self.style_combo = ttk.Combobox(self.main_frame, values=["solid", "dashed", "dotted"], state="readonly")
+        self.style_combo.grid(row=5, column=1, sticky="ew")
+        self.style_combo.set(self.get_val("frame_style") or "solid")
+
+        # Buttons
+        btn_frame = ttk.Frame(self.main_frame)
+        btn_frame.grid(row=6, column=0, columnspan=3, pady=10)
+        ttk.Button(btn_frame, text="OK", command=self.apply).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT)
+
+        self.main_frame.columnconfigure(1, weight=1)
+
+        self.deiconify()
+
+    def get_val(self, key):
+        if self.panel_id == "global":
+            return self.layout_cfg.get("global_style", {}).get(key, "")
+        return self.layout_cfg.get("panels", {}).get(self.panel_id, {}).get(key, "")
+
+    def set_val(self, key, val):
+        if val is None or val == "":
+            if self.panel_id == "global":
+                self.layout_cfg.get("global_style", {}).pop(key, None)
+            else:
+                self.layout_cfg.get("panels", {}).get(self.panel_id, {}).pop(key, None)
+        else:
+            if self.panel_id == "global":
+                self.layout_cfg.setdefault("global_style", {})[key] = val
+            else:
+                self.layout_cfg.setdefault("panels", {}).setdefault(self.panel_id, {})[key] = val
+
+    def pick_color(self, entry):
+        initial = entry.get() if entry.get() else None
+        color = colorchooser.askcolor(title="Choose color", initialcolor=initial)
+        if color[1]:
+            entry.delete(0, tk.END)
+            entry.insert(0, color[1])
+
+    def apply(self):
+        bg_color = self.bg_color_entry.get()
+        if bg_color:
+            self.set_val("bg_color", bg_color)
+            self.set_val("bg_opacity", self.opacity_var.get())
+        else:
+            self.set_val("bg_color", None)
+            self.set_val("bg_opacity", None)
+
+        frame_color = self.frame_color_entry.get()
+        if frame_color:
+            self.set_val("frame_color", frame_color)
+            self.set_val("frame_opacity", self.frame_opacity_var.get())
+            self.set_val("frame_thickness", int(self.thickness_spin.get()))
+            self.set_val("frame_style", self.style_combo.get())
+        else:
+            self.set_val("frame_color", None)
+            self.set_val("frame_opacity", None)
+            self.set_val("frame_thickness", None)
+            self.set_val("frame_style", None)
+        self.on_update_callback()
+        self.destroy()
+
+
+class TagsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
+    def __init__(self, parent, layout_cfg, panel_id, on_update_callback):
+        super().__init__(parent)
+        self.withdraw()
+        self.setup_focus_management()
+        self.title(f"Tags Style - {panel_id}")
+        self.transient(parent)
+
+        self.layout_cfg = layout_cfg
+        self.panel_id = panel_id
+        self.on_update_callback = on_update_callback
+
+        self.main_frame = ttk.Frame(self, padding=10)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        tags = ["bold", "italics", "underline", "strikethrough"]
+        self.tag_vars = {}
+
+        ttk.Label(self.main_frame, text="Tag").grid(row=0, column=0)
+        ttk.Label(self.main_frame, text="Color").grid(row=0, column=1)
+        ttk.Label(self.main_frame, text="Size").grid(row=0, column=2)
+
+        for i, tag in enumerate(tags, start=1):
+            ttk.Label(self.main_frame, text=tag).grid(row=i, column=0, sticky="w")
+
+            color_entry = ttk.Entry(self.main_frame, width=10)
+            color_entry.grid(row=i, column=1)
+            color_entry.insert(0, self.get_val(f"{tag[0]}_color") or "")
+            color_btn = tk.Button(self.main_frame, text="Pick", command=lambda e=color_entry: self.pick_color(e))
+            color_btn.grid(row=i, column=2)
+
+            size_spin = ttk.Spinbox(self.main_frame, from_=8, to=100, width=5)
+            size_spin.grid(row=i, column=3)
+            size_spin.set(self.get_val(f"{tag[0]}_size") or 24)
+
+            self.tag_vars[tag] = (color_entry, size_spin)
+
+        # Buttons
+        btn_frame = ttk.Frame(self.main_frame)
+        btn_frame.grid(row=len(tags)+1, column=0, columnspan=4, pady=10)
+        ttk.Button(btn_frame, text="OK", command=self.apply).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT)
+
+        self.deiconify()
+
+    def get_val(self, key):
+        if self.panel_id == "global":
+            return self.layout_cfg.get("global_style", {}).get(key, "")
+        return self.layout_cfg.get("panels", {}).get(self.panel_id, {}).get(key, "")
+
+    def set_val(self, key, val):
+        if self.panel_id == "global":
+            self.layout_cfg.setdefault("global_style", {})[key] = val
+        else:
+            self.layout_cfg.setdefault("panels", {}).setdefault(self.panel_id, {})[key] = val
+
+    def pick_color(self, entry):
+        initial = entry.get() if entry.get() else None
+        color = colorchooser.askcolor(title="Choose color", initialcolor=initial)
+        if color[1]:
+            entry.delete(0, tk.END)
+            entry.insert(0, color[1])
+
+    def apply(self):
+        for tag, (color_entry, size_spin) in self.tag_vars.items():
+            color = color_entry.get()
+            if color:
+                self.set_val(f"{tag[0]}_color", color)
+            else:
+                self.set_val(f"{tag[0]}_color", None)
+            self.set_val(f"{tag[0]}_size", int(size_spin.get()))
+        self.on_update_callback()
+        self.destroy()
+
+
+class ImageStyleWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
+    def __init__(self, parent, layout_cfg, panel_id, on_update_callback):
+        super().__init__(parent)
+        self.withdraw()
+        self.setup_focus_management()
+        self.title(f"Image Style - {panel_id}")
+        self.transient(parent)
+
+        self.layout_cfg = layout_cfg
+        self.panel_id = panel_id
+        self.on_update_callback = on_update_callback
+
+        self.main_frame = ttk.Frame(self, padding=10)
+        self.main_frame.pack(fill=tk.BOTH, expand=True)
+
+        # Alignment
+        ttk.Label(self.main_frame, text="Alignment:").grid(row=0, column=0, sticky="w")
+        self.align_combo = ttk.Combobox(self.main_frame, values=["top left", "top right", "bottom left", "bottom right", "center", "right", "left", "top", "bottom"], state="readonly")
+        self.align_combo.grid(row=0, column=1, sticky="ew")
+        self.align_combo.set(self.get_val("img_alignment") or "center")
+
+        # Image Fit
+        ttk.Label(self.main_frame, text="Image Fit:").grid(row=1, column=0, sticky="w")
+        self.fit_combo = ttk.Combobox(self.main_frame, values=["cover", "contain", "fill"], state="readonly")
+        self.fit_combo.grid(row=1, column=1, sticky="ew")
+        self.fit_combo.set(self.get_val("img_fit") or "contain")
+
+        # Opacity
+        ttk.Label(self.main_frame, text="Opacity:").grid(row=2, column=0, sticky="w")
+        self.opacity_var = tk.DoubleVar(value=self.get_val("img_opacity") or 1.0)
+        self.opacity_scale = tk.Scale(self.main_frame, from_=0.0, to=1.0, resolution=0.01, orient=tk.HORIZONTAL, variable=self.opacity_var)
+        self.opacity_scale.grid(row=2, column=1, sticky="ew")
+
+        # Buttons
+        btn_frame = ttk.Frame(self.main_frame)
+        btn_frame.grid(row=4, column=0, columnspan=3, pady=10)
+        ttk.Button(btn_frame, text="OK", command=self.apply).pack(side=tk.LEFT)
+        ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT)
+
+        self.main_frame.columnconfigure(1, weight=1)
+
+        self.deiconify()
+
+    def get_val(self, key):
+        if self.panel_id == "global":
+            return self.layout_cfg.get("global_style", {}).get(key, "")
+        return self.layout_cfg.get("panels", {}).get(self.panel_id, {}).get(key, "")
+
+    def set_val(self, key, val):
+        if self.panel_id == "global":
+            self.layout_cfg.setdefault("global_style", {})[key] = val
+        else:
+            self.layout_cfg.setdefault("panels", {}).setdefault(self.panel_id, {})[key] = val
+
+
+    def apply(self):
+        self.set_val("img_alignment", self.align_combo.get())
+        self.set_val("img_fit", self.fit_combo.get())
+        self.set_val("img_opacity", self.opacity_var.get())
+        self.on_update_callback()
+        self.destroy()
+
 
 root = tkdnd.Tk()
 ConfigGUI(root)

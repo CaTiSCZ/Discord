@@ -207,7 +207,6 @@ function applyPanelStyle(id, settings) {
     const globalStyle = globalConfig.global_style || {};
     const bgColor = settings.bg_color || globalStyle.bg_color || "transparent";
     const bgOpacity = settings.bg_color_opacity || globalStyle.bg_color_opacity || 1.0;
-    const isCentered = settings.center_content || false
     // Geometrie
     el.style.left = settings.x + "px";
     el.style.top = settings.y + "px";
@@ -215,22 +214,28 @@ function applyPanelStyle(id, settings) {
     el.style.height = settings.height + "px";
     el.style.zIndex = settings.z_index !== undefined ? settings.z_index : 1;
 
-    el.style.justifyContent = isCentered ? 'center' : 'flex-start';
-    el.style.alignItems = isCentered ? 'center' : 'flex-start';
+    const alignment = settings.alignment || globalStyle.alignment || "left";
+    if (alignment === "justify") {
+        el.style.justifyContent = "left";
+    } else {
+        el.style.justifyContent = alignment;
+    }
+    el.style.alignItems = alignment === 'center' ?  'center' : 'flex-start';
     
-
     if (settings.is_image) {
         const img = el.querySelector("img");
         if (!img) return;
         el.style.backgroundColor = hexToRgba(bgColor, bgOpacity); // Pozadí vyplní celý panel
         contentEl.style.backgroundColor = "transparent";
         img.style.objectFit = settings.img_fit || "contain";
-        let opacity = (settings.img_opacity !== undefined && settings.img_opacity !== "") 
-                        ? parseFloat(settings.img_opacity) 
+
+        const imgOpacity = settings.img_opacity || globalStyle.img_opacity || 1.0;
+        let opacity = (imgOpacity !== undefined && imgOpacity !== "") 
+                        ? parseFloat(imgOpacity) 
                         : 1.0;
         opacity = isNaN(opacity) ? 1.0 : Math.min(Math.max(opacity, 0), 1);
         img.style.opacity = opacity;
-        img.style.objectPosition = settings.center_content ? "center" : "left top"; 
+        img.style.objectPosition = settings.img_alignment || globalStyle.img_alignment || "top left"; 
     } else {
         contentEl.style.columnWidth = "auto";
         contentEl.style.columnGap = "normal";
@@ -240,7 +245,7 @@ function applyPanelStyle(id, settings) {
         contentEl.style.backgroundColor = hexToRgba(bgColor, bgOpacity);
         el.style.backgroundColor = "transparent";
         // Základní textové styly
-        contentEl.style.textAlign = isCentered ? 'center' : 'left';
+        contentEl.style.textAlign = settings.alignment || globalStyle.alignment || "left";
         contentEl.style.fontFamily = settings.font_family || globalStyle.font_family || "inherit";
         contentEl.style.fontSize = (settings.font_size || globalStyle.font_size || 24) + "px";
         contentEl.style.color = settings.text_color || globalStyle.text_color || "#ffffff";
@@ -262,6 +267,7 @@ function applyPanelStyle(id, settings) {
             #${id}-content s { ${getStyle('s', 'color', '', settings, globalStyle)} ${getStyle('s', 'size', 'px', settings, globalStyle)} }
         `;
     }
+    requestAnimationFrame(() => {fitText(id)});
 }
 
 function hexToRgba( hexColor, opacity) {
