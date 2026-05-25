@@ -1632,7 +1632,7 @@ class ImageStyleWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
 
         # Image Fit
         ttk.Label(self.main_frame, text="Image Fit:").grid(row=1, column=0, sticky="w")
-        self.fit_combo = ttk.Combobox(self.main_frame, values=["cover", "contain", "fill"], state="readonly")
+        self.fit_combo = ttk.Combobox(self.main_frame, values=["cover", "contain", "fill", "none"], state="readonly")
         self.fit_combo.grid(row=1, column=1, sticky="ew")
         self.fit_combo.set(self.get_val("img_fit") or "contain")
 

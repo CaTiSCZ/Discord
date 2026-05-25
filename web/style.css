@@ -67,7 +67,6 @@ html, body {
   height: 100%;
   padding: 0px;
   display: none;
-  object-fit: contain;
   opacity: 0;                /* Výchozí stav: neviditelný */
   transition: opacity 0.3s ease-in-out;
 }

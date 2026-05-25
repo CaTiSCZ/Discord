@@ -90,12 +90,13 @@ socket.on("new_image", (data) => {
         imgEl.style.display = "none"
         el.style.display = "none"
 
-        imgElement.classList.remove("visible");
+        imgEl.classList.remove("visible");
     } else {
         imgEl.classList.add("visible");
-        imgEl.src = data.url;
-        imgEl.style.display = "block"
-        el.style.display = "block"
+        imgEl.src = data.url;        
+        imgEl.style.display = "block"        
+        el.style.display = "block"        
+        imgPosition(data.panel);
     }
      
 });
@@ -170,7 +171,7 @@ function setColWidth(panelId){
         contentEl.style.width = "100%";
         let colWidth = (settings.column_width > maxWidth) ? maxWidth : settings.column_width;
         contentEl.style.columnWidth = `${colWidth}px`;
-        contentEl.style.columnGap = `${settings.column_spaceing || 20}px`;                    
+        contentEl.style.columnGap = `${settings.column_spacing || 20}px`;                    
 
     } else {
             contentEl.style.width = "fit-content";
@@ -199,9 +200,61 @@ function setPanelWidth(panelId){
     contentEl.style.width = `${actualTextWidth}px`;
 }
 
-function applyPanelStyle(id, settings) {
-    const el = document.getElementById(id);
-    const contentEl = document.getElementById(`${id}-content`);
+function normalizeObjectPosition(value) {
+    // Mapuje jednoduché alignment hodnoty na správný CSS object-position formát
+    const positionMap = {
+        'left': '0% 50%',
+        'right': '100% 50%',
+        'center': '50% 50%',
+        'top': '50% 0%',
+        'bottom': '50% 100%',
+        'top left': '0% 0%',
+        'top right': '100% 0%',
+        'bottom left': '0% 100%',
+        'bottom right': '100% 100%',
+    };
+    
+    // Pokud je hodnota klíč v mapě, vrať normalizovanou hodnotu
+    if (positionMap[value]) {
+        return positionMap[value];
+    }
+    
+    // Pokud je to již percentuální nebo px hodnota, vrať ji tak jak je
+    if (value.includes('%') || value.includes('px')) {
+        return value;
+    }
+    
+    // Default fallback
+    return '50% 50%';
+}
+
+function imgPosition(panelId) {
+    const el = document.getElementById(panelId);
+    const img = el.querySelector("img") //const img = document.getElementById(`${panelId}-content`);
+    const settings = globalConfig.panels[panelId];
+    const globalStyle = globalConfig.global_style || {};
+
+    if (!el || !img || !globalConfig.panels[panelId]) return;
+
+    const alignmentRaw = settings.img_alignment || globalStyle.img_alignment || "50% 50%";
+    const alignment = normalizeObjectPosition(alignmentRaw);
+    const fit = settings.img_fit || "cover";
+    
+    console.log(`Setting objectPosition for ${panelId}: raw="${alignmentRaw}" -> normalized="${alignment}", objectFit: ${fit}`);
+    
+    
+    img.style.objectFit = "contain"; 
+    img.style.objectPosition = "center";
+    //img.style.setProperty('object-position', alignment, 'important');
+    
+    // Debug: zkontroluj, co je skutečně nastaveno
+    console.log(`Applied styles: display=${img.style.display}, objectFit=${img.style.objectFit}, objectPosition=${img.style.objectPosition}`);
+}
+
+
+function applyPanelStyle(panelId, settings) {
+    const el = document.getElementById(panelId);
+    const contentEl = document.getElementById(`${panelId}-content`);
     
     if (!el || !contentEl) return;
     const globalStyle = globalConfig.global_style || {};
@@ -214,20 +267,16 @@ function applyPanelStyle(id, settings) {
     el.style.height = settings.height + "px";
     el.style.zIndex = settings.z_index !== undefined ? settings.z_index : 1;
 
-    const alignment = settings.alignment || globalStyle.alignment || "left";
-    if (alignment === "justify") {
-        el.style.justifyContent = "left";
-    } else {
-        el.style.justifyContent = alignment;
-    }
-    el.style.alignItems = alignment === 'center' ?  'center' : 'flex-start';
-    
+
     if (settings.is_image) {
         const img = el.querySelector("img");
         if (!img) return;
+        
+        el.style.justifyContent = "center";
+        el.style.alignItems = "center";
         el.style.backgroundColor = hexToRgba(bgColor, bgOpacity); // Pozadí vyplní celý panel
         contentEl.style.backgroundColor = "transparent";
-        img.style.objectFit = settings.img_fit || "contain";
+        imgPosition(panelId); 
 
         const imgOpacity = settings.img_opacity || globalStyle.img_opacity || 1.0;
         let opacity = (imgOpacity !== undefined && imgOpacity !== "") 
@@ -235,12 +284,17 @@ function applyPanelStyle(id, settings) {
                         : 1.0;
         opacity = isNaN(opacity) ? 1.0 : Math.min(Math.max(opacity, 0), 1);
         img.style.opacity = opacity;
-        img.style.objectPosition = settings.img_alignment || globalStyle.img_alignment || "top left"; 
+        
     } else {
-        contentEl.style.columnWidth = "auto";
-        contentEl.style.columnGap = "normal";
+        const alignment = settings.alignment || globalStyle.alignment || "left";
+        if (alignment === "justify") {
+            el.style.justifyContent = "left";
+        } else {
+            el.style.justifyContent = alignment;
+        }
+        el.style.alignItems = alignment === 'center' ?  'center' : 'flex-start';
         contentEl.style.width = "fit-content";
-        setColWidth(id)
+        setColWidth(panelId)
         
         contentEl.style.backgroundColor = hexToRgba(bgColor, bgOpacity);
         el.style.backgroundColor = "transparent";
@@ -261,13 +315,14 @@ function applyPanelStyle(id, settings) {
             return val ? (prop === 'color' ? `color: ${val} !important;` : `font-size: ${val}${unit} !important;`) : "";
         };
         styleTag.innerHTML = `
-            #${id}-content b { ${getStyle('b', 'color', '', settings, globalStyle)} ${getStyle('b', 'size', 'px', settings, globalStyle)} }
-            #${id}-content i { ${getStyle('i', 'color', '', settings, globalStyle)} ${getStyle('i', 'size', 'px', settings, globalStyle)} }
-            #${id}-content u { ${getStyle('u', 'color', '', settings, globalStyle)} ${getStyle('u', 'size', 'px', settings, globalStyle)} }
-            #${id}-content s { ${getStyle('s', 'color', '', settings, globalStyle)} ${getStyle('s', 'size', 'px', settings, globalStyle)} }
+            #${panelId}-content b { ${getStyle('b', 'color', '', settings, globalStyle)} ${getStyle('b', 'size', 'px', settings, globalStyle)} }
+            #${panelId}-content i { ${getStyle('i', 'color', '', settings, globalStyle)} ${getStyle('i', 'size', 'px', settings, globalStyle)} }
+            #${panelId}-content u { ${getStyle('u', 'color', '', settings, globalStyle)} ${getStyle('u', 'size', 'px', settings, globalStyle)} }
+            #${panelId}-content s { ${getStyle('s', 'color', '', settings, globalStyle)} ${getStyle('s', 'size', 'px', settings, globalStyle)} }
         `;
+        requestAnimationFrame(() => {fitText(panelId)});
     }
-    requestAnimationFrame(() => {fitText(id)});
+    
 }
 
 function hexToRgba( hexColor, opacity) {
@@ -280,3 +335,6 @@ function hexToRgba( hexColor, opacity) {
     }
     return `rgba(${r}, ${g}, ${b}, ${opacity})`;
 }
+
+
+
