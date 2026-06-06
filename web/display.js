@@ -200,33 +200,6 @@ function setPanelWidth(panelId){
     contentEl.style.width = `${actualTextWidth}px`;
 }
 
-function normalizeObjectPosition(value) {
-    // Mapuje jednoduché alignment hodnoty na správný CSS object-position formát
-    const positionMap = {
-        'left': '0% 50%',
-        'right': '100% 50%',
-        'center': '50% 50%',
-        'top': '50% 0%',
-        'bottom': '50% 100%',
-        'top left': '0% 0%',
-        'top right': '100% 0%',
-        'bottom left': '0% 100%',
-        'bottom right': '100% 100%',
-    };
-    
-    // Pokud je hodnota klíč v mapě, vrať normalizovanou hodnotu
-    if (positionMap[value]) {
-        return positionMap[value];
-    }
-    
-    // Pokud je to již percentuální nebo px hodnota, vrať ji tak jak je
-    if (value.includes('%') || value.includes('px')) {
-        return value;
-    }
-    
-    // Default fallback
-    return '50% 50%';
-}
 
 function imgPosition(panelId) {
     const el = document.getElementById(panelId);
@@ -236,19 +209,15 @@ function imgPosition(panelId) {
 
     if (!el || !img || !globalConfig.panels[panelId]) return;
 
-    const alignmentRaw = settings.img_alignment || globalStyle.img_alignment || "50% 50%";
-    const alignment = normalizeObjectPosition(alignmentRaw);
-    const fit = settings.img_fit || "cover";
+    const alignment = settings.img_alignment || globalStyle.img_alignment || "center";
+    const fit = settings.img_fit || "contain";
+    //console.log(`Setting objectPosition for ${panelId}: alignment="${alignment}", objectFit: ${fit}`);
     
-    console.log(`Setting objectPosition for ${panelId}: raw="${alignmentRaw}" -> normalized="${alignment}", objectFit: ${fit}`);
-    
-    
-    img.style.objectFit = "contain"; 
-    img.style.objectPosition = "center";
-    //img.style.setProperty('object-position', alignment, 'important');
+    img.style.objectFit = fit; 
+    img.style.objectPosition = alignment;
     
     // Debug: zkontroluj, co je skutečně nastaveno
-    console.log(`Applied styles: display=${img.style.display}, objectFit=${img.style.objectFit}, objectPosition=${img.style.objectPosition}`);
+    //console.log(`Applied styles: display=${img.style.display}, objectFit=${img.style.objectFit}, objectPosition=${img.style.objectPosition}`);
 }
 
 
