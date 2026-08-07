@@ -15,7 +15,7 @@ from logger import setup_logger, CallbackHandler, Logging
 from dispatcher import dispatcher
 from image_processor import upload_image, upload_image_from_pil
 from web.server import sio
-from gui_utils import FocusManager, WindowPositionMixIn
+from gui_utils import FocusManager, WindowPositionMixIn, show_messagebox
 
 
 CONFIG_FILE = "config.json"
@@ -288,7 +288,7 @@ class ConfigGUI:
             return cfg
 
         except json.JSONDecodeError:
-            messagebox.showerror("Error", "config.json is corrupted. Creating a new one.")
+            show_messagebox(self.root, "Error", "config.json is corrupted. Creating a new one.", kind="error")
             return {"TOKEN": "", "watchers": []}
 
     def render_watchers(self):
@@ -361,7 +361,7 @@ class ConfigGUI:
                 text_widget.insert(tk.END, f"\n{url}")
                 self.logger.debug(f"File attached for {gui_id}: {url}")
             else:
-                messagebox.showerror("Upload Error", "Failed to upload the file.")
+                show_messagebox(self.root, "Upload Error", "Failed to upload the file.", kind="error")
 
     def paste_image(self, gui_id):
         try:
@@ -400,13 +400,13 @@ class ConfigGUI:
                         text_widget.insert(tk.END, f"\n{url}")
                         self.logger.debug(f"File dropped for {gui_id}: {url}")
                     else:
-                        messagebox.showerror("Upload Error", f"Failed to upload {file_path}.")
+                        show_messagebox(self.root, "Upload Error", f"Failed to upload {file_path}.", kind="error")
                         self.logger.error(f"Failed to upload {file_path}.")
                 else:
-                    messagebox.showwarning("Unsupported File", f"File {file_path} is not a supported image type.")
+                    show_messagebox(self.root, "Unsupported File", f"File {file_path} is not a supported image type.", kind="warning")
                     self.logger.warning(f"Unsupported file type dropped: {file_path}")
             else:
-                messagebox.showwarning("Invalid File", f"{file_path} is not a valid file.")
+                show_messagebox(self.root, "Invalid File", f"{file_path} is not a valid file.", kind="warning")
                 self.logger.warning(f"Invalid file dropped: {file_path}")
             
     def toggle_watcher_visibility(self, var_enabled, details_frame):
@@ -1072,9 +1072,11 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
                 except Exception as e:
                     self.logger.error(f"Error sending to OBS: {e}")
             else:
-                messagebox.showwarning(
-                    "Bot Not Running", 
-                    "Layout could not be sent to OBS. Start the bot to update the live overlay."
+                show_messagebox(
+                    self,
+                    "Bot Not Running",
+                    "Layout could not be sent to OBS. Start the bot to update the live overlay.",
+                    kind="warning"
                 )
         except Exception as e:
             # Zachytíme případné jiné chyby, aby aplikace nespadla
@@ -1084,7 +1086,7 @@ class WebSettingsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump(self.config_data, f, indent=4, ensure_ascii=False)
         except Exception as e:
-            messagebox.showerror("Error", f"Failed to save config.json: {e}")
+            show_messagebox(self, "Error", f"Failed to save config.json: {e}", kind="error")
 
     def apply_and_close(self):
         self.apply_to_obs() # Poslat do OBS před zavřením
@@ -1366,7 +1368,7 @@ class TextStyleWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
 
         self.main_frame.columnconfigure(1, weight=1)
 
-        self.deiconify()
+        self.place_relative_to(parent, position="nw", offset_x=20, offset_y=20)
 
     def get_val(self, key):
         if self.panel_id == "global":
@@ -1484,7 +1486,7 @@ class PanelStyleWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
 
         self.main_frame.columnconfigure(1, weight=1)
 
-        self.deiconify()
+        self.place_relative_to(parent, position="nw", offset_x=20, offset_y=20)
 
     def get_val(self, key):
         if self.panel_id == "global":
@@ -1577,7 +1579,7 @@ class TagsWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
         ttk.Button(btn_frame, text="OK", command=self.apply).pack(side=tk.LEFT)
         ttk.Button(btn_frame, text="Cancel", command=self.destroy).pack(side=tk.LEFT)
 
-        self.deiconify()
+        self.place_relative_to(parent, position="nw", offset_x=20, offset_y=20)
 
     def get_val(self, key):
         if self.panel_id == "global":
@@ -1650,7 +1652,7 @@ class ImageStyleWindow(tk.Toplevel, FocusManager, WindowPositionMixIn):
 
         self.main_frame.columnconfigure(1, weight=1)
 
-        self.deiconify()
+        self.place_relative_to(parent, position="nw", offset_x=20, offset_y=20)
 
     def get_val(self, key):
         if self.panel_id == "global":

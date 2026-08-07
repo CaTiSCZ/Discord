@@ -200,7 +200,6 @@ function setPanelWidth(panelId){
     contentEl.style.width = `${actualTextWidth}px`;
 }
 
-
 function imgPosition(panelId) {
     const el = document.getElementById(panelId);
     const img = el.querySelector("img") //const img = document.getElementById(`${panelId}-content`);
@@ -211,15 +210,10 @@ function imgPosition(panelId) {
 
     const alignment = settings.img_alignment || globalStyle.img_alignment || "center";
     const fit = settings.img_fit || "contain";
-    //console.log(`Setting objectPosition for ${panelId}: alignment="${alignment}", objectFit: ${fit}`);
     
     img.style.objectFit = fit; 
     img.style.objectPosition = alignment;
-    
-    // Debug: zkontroluj, co je skutečně nastaveno
-    //console.log(`Applied styles: display=${img.style.display}, objectFit=${img.style.objectFit}, objectPosition=${img.style.objectPosition}`);
 }
-
 
 function applyPanelStyle(panelId, settings) {
     const el = document.getElementById(panelId);

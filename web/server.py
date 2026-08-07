@@ -3,15 +3,16 @@
 import socketio
 from fastapi import FastAPI, UploadFile, File
 from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
-from starlette.responses import Response
+from starlette.responses import Response, HTMLResponse
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 import uvicorn
 import logging
 import sys
 import os
 import mimetypes
 import base64
+import asyncio
 from dispatcher import dispatcher
 import urllib.parse
 
@@ -38,14 +39,19 @@ server_instance = None
 uploaded_images = {}
 
 # Nastavení šablon a statických souborů
-templates = Jinja2Templates(directory="web")
+jinja_env = Environment(
+    loader=FileSystemLoader("web"),
+    autoescape=select_autoescape(["html", "xml"]),
+)
 
 # --- Trasy (Routes) ---
 
 @app.get("/")
 async def overlay(request: Request):
     """Zobrazí hlavní display pro OBS."""
-    return templates.TemplateResponse("display.html", {"request": request})
+    template = jinja_env.get_template("display.html")
+    html = template.render(request=request)
+    return HTMLResponse(content=html)
 
 @app.post("/upload_b64")
 async def upload_b64(data: dict):
@@ -158,9 +164,15 @@ async def stop_web_server():
     if server_instance:
         logger.debug("Shutting down Web Server...")
         server_instance.should_exit = True
-        if hasattr(server_instance, 'shutdown'):
-            await server_instance.shutdown()
-        server_instance = None
+        try:
+            if hasattr(server_instance, 'shutdown'):
+                await server_instance.shutdown()
+        except asyncio.CancelledError:
+            logger.debug("Web server shutdown was cancelled during application shutdown.")
+        except Exception as exc:
+            logger.warning(f"Web server shutdown raised an error: {exc}")
+        finally:
+            server_instance = None
         logger.debug("Web Server was successfully shut down.")
     else:
         logger.info("Web Server is not running.")
