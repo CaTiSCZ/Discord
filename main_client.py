@@ -20,7 +20,6 @@ class DiscordEngine:
         self.config = config or self.load_config()
         self.loop = None
         self.client = None
-        self.kb_listener = None
         self.is_running = False
 
     def load_config(self):
@@ -92,38 +91,27 @@ class DiscordEngine:
         
         try:
             self.loop.create_task(start_web_server())
-            await self.client.start(TOKEN)
-            
+            await self.client.start(TOKEN)  
         except Exception as e:
             logger.error(f"Error of Engine: {e}")
         finally:
-            await self.shutdown_async()
-
-    async def shutdown_async(self):
-        """Čisté ukončení asynchronních součástí."""
-        logger.info("Engine: Shutting down...")
-        
-        if self.client and not self.client.is_closed():
-            try:
-                await self.client.close()
-                logger.debug("Engine: Discord client closed.")
-            except Exception as e:
-                logger.error(f"Engine: Error closing client: {e}")
-        
-        try:
-            await stop_web_server()
-        except Exception as e:
-            logger.error(f"Engine: Error during server shutdown: {e}")
-        
-        # Zrušení všech visících tasků
-        tasks = [t for t in asyncio.all_tasks(self.loop) if t is not asyncio.current_task()]
-        for t in tasks: t.cancel()
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
+            """Čisté ukončení asynchronních součástí."""
+            logger.info("Engine: Shutting down...")
             
-        self.is_running = False
-        logger.info("Engine: All process stopped.")
-        self.loop.stop()
+            try:
+                await stop_web_server()
+            except Exception as e:
+                logger.error(f"Engine: Error during server shutdown: {e}")
+            
+            # Zrušení všech visících tasků
+            tasks = [t for t in asyncio.all_tasks(self.loop) if t is not asyncio.current_task()]
+            for t in tasks: t.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+                
+            self.is_running = False
+            logger.info("Engine: All process stopped.")
+                 
 
     def start(self, loop):
         """Vstupní bod pro thread (z GUI nebo Mainu)."""
@@ -138,9 +126,10 @@ class DiscordEngine:
 
     def stop(self):
         """Signál k ukončení vyslaný z jiného vlákna (GUI)."""
-        if self.kb_listener:
-            self.kb_listener.stop()
+        if self.client and not self.client.is_closed():
+            try:
+                asyncio.run_coroutine_threadsafe(self.client.close(), self.loop)
+            except Exception as e:
+                logger.error(f"Error closing client: {e}")  
         
-        if self.loop and self.loop.is_running():
-            asyncio.run_coroutine_threadsafe(self.shutdown_async(), self.loop)
 
