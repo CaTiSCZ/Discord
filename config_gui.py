@@ -204,6 +204,9 @@ class ConfigGUI:
 
         self.log_text = tk.Text(self.left_panel, state='disabled', wrap='word', bg="#E2E0E0", fg="#000000", font=("Consolas", 10))
         self.log_text.grid(row=0, column=0, sticky="nsew")
+        self.log_text.bind("<Button-1>", lambda e: self.log_text.focus_set())
+        self.log_text.bind("<Control-c>", lambda e: self._copy_log_selection())
+        self.log_text.bind("<Control-C>", lambda e: self._copy_log_selection())
         
         log_scroll = ttk.Scrollbar(self.left_panel, orient="vertical", command=self.log_text.yview)
         log_scroll.grid(row=0, column=1, sticky="ns")
@@ -645,13 +648,17 @@ class ConfigGUI:
     def on_key_press(self, event):
         """Handler pro stisk klávesy v GUI okně."""
         focus = self.root.focus_get()
-        if not isinstance(focus, (tk.Entry, tk.Text)):
-            key = event.char.lower()
-            if self.bot_running:
-                if key == 'q':
-                    self.stop_bot()
-                else:
-                    asyncio.run_coroutine_threadsafe(dispatcher.on_key_press(key), self.loop)
+        if event.state & 0x4:
+            return
+        if isinstance(focus, tk.Entry) or (isinstance(focus, tk.Text) and focus is not self.log_text):
+            return
+
+        key = event.char.lower() if event.char else ''
+        if self.bot_running:
+            if key == 'q':
+                self.stop_bot()
+            else:
+                asyncio.run_coroutine_threadsafe(dispatcher.on_key_press(key), self.loop)
 
     def safe_dispatch_clear(self):
         """ Volá manuální mazání přes dispatcher na všech watcherech, kde je to povoleno. """
@@ -659,6 +666,14 @@ class ConfigGUI:
             asyncio.run_coroutine_threadsafe(dispatcher.dispatch_clear(), self.loop)
         else:
             self.logger.warning("Bot not running, cannot dispatch clear.")
+
+    def _copy_log_selection(self):
+        try:
+            selected = self.log_text.selection_get()
+            self.root.clipboard_clear()
+            self.root.clipboard_append(selected)
+        except tk.TclError:
+            pass
 
     def update_gui_watcher_header(self, idx):
         """Aktualizuje záhlaví GUI watcher textového pole když se změní comment."""
