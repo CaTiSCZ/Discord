@@ -84,14 +84,13 @@ class MessageDispatcher:
     async def dispatch_clear(self):
         for watchers_list in self._watchers.values():
             for watcher in watchers_list:
-                if watcher.manual_clear:
-                    try:
-                        await watcher.clear_content()
-                        logger.debug(f"Contend cleared")
-                    except asyncio.CancelledError:
-                        pass 
-                    except Exception as e:
-                        logger.error(f"Error clear contend: {e}")
+                try:
+                    await watcher.clear_content()
+                    logger.debug(f"Contend cleared")
+                except asyncio.CancelledError:
+                    pass 
+                except Exception as e:
+                    logger.error(f"Error clear contend: {e}")
                     
 
 dispatcher = MessageDispatcher()

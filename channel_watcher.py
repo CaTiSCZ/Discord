@@ -37,7 +37,9 @@ class MessageFormatter:
             }) 
             if len(content) > 10:
                 extension_intervals.append(len(content) * 0.5) # prodloužení o půl vteřiny na řádek přesahující 10 řádků
-
+            else:
+                extension_intervals.append(0)
+            
         return messages, extension_intervals
     
     def _process_roll(self, msg):
@@ -321,7 +323,7 @@ class ChannelWatcher:
         async with self._lock:
             removed_count = self._cleanup_expired_messages()
             if removed_count == 0:
-                logger.warning(f"No expare messages ({self.comment}).")
+                logger.debug(f"No expare messages ({self.comment}).")
             else:
                 await self._refresh_display()
                 logger.info(f"Removed {removed_count} expire messages ({self.comment}).")
@@ -349,8 +351,8 @@ class ChannelWatcher:
         
         formatted_messages, extension_intervals = self.formatter.format_messages(objs)
         
-        for m in self.active_messages:
-            m["expiry"] += extension_intervals.pop(0) if extension_intervals else 0
+        for m, i in zip(self.active_messages, extension_intervals):
+            m["expiry"] += i
         
         if self.type_output in ("socket", "both"):    
             await self.sio.emit("new_message", {
