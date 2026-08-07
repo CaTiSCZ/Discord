@@ -282,6 +282,7 @@ class ChannelWatcher:
                         if not self.is_content:
                             return
                     m["msg_obj"] = message
+                    m["expiry"] = time.time() + self.interval
                     logger.debug(f"message {message.id} edited.")
                     await self._refresh_display()
                     break
